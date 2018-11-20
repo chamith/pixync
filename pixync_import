@@ -1,0 +1,100 @@
+#! /bin/bash
+
+remove_src_files=0
+total_file_count=0
+running_file_count=0
+running_file_size=0
+
+if [ $# -lt 2 ]
+then
+        echo "usage: $0 <target-dir> <destination-dir>"
+        exit
+else
+        mount_point=$1
+        search_string=$mount_point/DCIM/*/*
+        target_root=$2
+fi
+
+echo -n "Camera Name> "
+read camera_name
+
+echo -n "Remove source files? [1/0] (default 0)>"
+read remove_src_files
+
+if [ $remove_src_files -eq 1 ]
+then
+        file_operation="Moving"
+        copy_options=" --remove-source-files -t --progress "
+else
+        file_operation="Copying"
+        copy_options=" -t --progress "
+fi
+
+total_file_size=$(du $search_string | awk '{ total+= $1 }; END {print total}')
+
+total_file_count=`ls $search_string -l | wc -l`
+
+#echo "total file size " $total_file_size
+for filepath in $search_string
+do
+
+running_file_count=$((running_file_count+1))
+datetime_taken=`stat -c %z $filepath`
+file_size=`stat -c %s $filepath`
+file_size=$((file_size / 1024))
+date_taken=${datetime_taken:0:4}${datetime_taken:5:2}${datetime_taken:8:2}
+basefilename=${filepath##*/}
+extension=${basefilename##*.}
+basefilename=${basefilename%.*}
+sequence_no=${basefilename:4:4}
+
+echo "base file name: " $basefilename
+#echo "extension: " $extension
+#echo "file size: " $file_size
+target_filename=${date_taken//-}'_'$camera_name'_'$basefilename'.'$extension
+target_file=$raw_img_dir/$target_filename
+
+
+#echo $target_filename
+
+case $extension in
+        "CR2" | "cr2") target_dir=$target_root/img/raw
+        ;;
+        "MOV" | "mov") target_dir=$target_root/vid/raw
+        ;;
+        "jpg" | "JPG") target_dir=$target_root/img/prc
+        ;;
+        *) target_dir=$target_root/tmp
+        ;;
+
+esac
+
+mkdir -p $target_dir
+target_file=$target_dir/$target_filename
+
+#echo -n $file_operation
+#echo -ne "copying file "$target_file"\r"
+
+rsync $copy_options $filepath $target_file
+
+if [ -s $target_file ]
+then
+        running_file_size=$((running_file_size+file_size))
+        progress=$(($running_file_size * 100/ $total_file_size))
+        echo "    DONE ["$running_file_count"/"$total_file_count"] ("$progress"%)"
+else
+        echo "    ERROR: FILE NOT COPIED"
+fi
+
+#echo "running file size: " $running_file_size
+#echo "progress: " $progress
+
+#echo -ne "---- $progress% ----\r"
+
+done
+
+#echo "---- 100% ----"
+#umount $mount_point
+
+echo "================================================"
+
