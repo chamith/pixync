@@ -1,0 +1,4 @@
+#! /bin/bash
+
+sudo ln -s $PWD /usr/lib/
+sudo ln -s $PWD/main /usr/bin/pixync

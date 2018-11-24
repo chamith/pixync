@@ -5,6 +5,8 @@ total_file_count=0
 running_file_count=0
 running_file_size=0
 
+echo "pixync import module"
+
 if [ $# -lt 2 ]
 then
         echo "usage: $0 <target-dir> <destination-dir>"

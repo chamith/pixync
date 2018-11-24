@@ -179,7 +179,7 @@ case $1 in
 	;;
 	"import" ) 
 		set_params $3
-		pixync_import $2 $prm_root/$3
+		/usr/lib/pixync/import $2 $prm_root/$3
 	;;
 	"open" )
 		set_params $2
