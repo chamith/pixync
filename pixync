@@ -8,7 +8,7 @@ push_raw_proj(){
 	echo "BACKING UP '$prj_name' to '$bck_root'"
 
 	if [ -d "$src" ]; then
-		rsync -urtWv --exclude "*.xmp" --progress $src $trg
+		rsync -urtWv --exclude "*.xmp" --exclude "*.db" --exclude "*.conf" --exclude "*.pp3" --progress $src $trg
 		echo "DONE"
 	else
 		echo "ERROR: '$src does not exist'"
@@ -51,13 +51,10 @@ push_xmp_proj(){
 	cd $prj_prm_dir
 
 	echo -e "\e[34mUPDATING XMP FILES OF '$prj_name'\e[39m"
-	git add *.xmp
-
-	echo -e "\e[33mUPDATING DARKTABLE LIBRARY OF '$prj_name'\e[39m"
-	git add dt-lib.db
+	git add *.conf *.xmp *.pp3 *.db 
 
 	echo "commiting the changes of $prj_name"
-	git commit -m "updating the xmp files of $prj_name"
+	git commit -m "changes to $prj_name"
 
 	echo -ne "PUSHING TO REMOTE REPO ..."
 	git push origin master
