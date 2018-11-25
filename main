@@ -50,8 +50,14 @@ push_xmp_proj(){
 	local cur_dir=$PWD
 	cd $prj_prm_dir
 
-	echo -e "\e[34mUPDATING XMP FILES OF '$prj_name'\e[39m"
-	git add *.conf *.xmp *.pp3 *.db 
+	echo -e "\e[34mUpdating darktable files of '$prj_name'\e[39m"
+	git add *.xmp *.db 
+
+	echo -e "\e[34mUpdating rawtherepee files of '$prj_name'\e[39m"
+	git add *.pp3 
+
+	echo -e "\e[34mUpdating pixync files of '$prj_name'\e[39m"
+	git add *.conf
 
 	echo "commiting the changes of $prj_name"
 	git commit -m "changes to $prj_name"
@@ -141,6 +147,18 @@ open_proj(){
 
 }
 
+open_proj_rt(){
+
+	local prj_dir=$prm_root/$prj_name
+
+	#pull_remote
+	#pull_nas
+	#pull_cache
+
+	echo "opening raw therapee for $prj_name"
+	rawtherapee $prj_dir/img/raw
+
+}
 set_params(){
 	conf_file_name="pixync.conf"
 	prj_name=$(basename ${1%/})
@@ -186,6 +204,14 @@ case $1 in
 		pull_raw_proj
 		pull_xmp_proj
 		open_proj
+		push_xmp_proj
+		push_raw_proj
+	;;
+	"open_rt" )
+		set_params $2
+		pull_raw_proj
+		pull_xmp_proj
+		open_proj_rt
 		push_xmp_proj
 		push_raw_proj
 	;;
