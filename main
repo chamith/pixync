@@ -51,7 +51,7 @@ push_xmp_proj(){
 	cd $prj_prm_dir
 
 	echo -e "\e[34mUpdating darktable files of '$prj_name'\e[39m"
-	git add *.xmp *.db 
+	git add *.xmp dt-lib.db 
 
 	echo -e "\e[34mUpdating rawtherepee files of '$prj_name'\e[39m"
 	git add *.pp3 
