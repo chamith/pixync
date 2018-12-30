@@ -2,13 +2,13 @@
 
 push_raw_proj(){
 
-	local src="$prm_root/$prj_name"
+	local src="$prj_dir"
 	local trg="$bck_root"
 	
 	echo "BACKING UP '$prj_name' to '$bck_root'"
 
 	if [ -d "$src" ]; then
-		rsync -urtWv --exclude "*.xmp" --exclude "*.db" --exclude "*.conf" --exclude "*.pp3" --progress $src $trg
+		rsync -urtWv --exclude "*.xmp" --exclude "*.db" --exclude "*.conf" --exclude "*.pp3" --exclude ".dtrash" --progress $src $trg --delete
 		echo "DONE"
 	else
 		echo "ERROR: '$src does not exist'"
@@ -18,8 +18,8 @@ push_raw_proj(){
 
 pull_raw_proj(){
 
-	local src="$bck_root/$prj_name"
-	local trg="$prm_root/"
+	local src="$bck_root/$prj_name/"
+	local trg="$prj_dir/"
 
 	echo "RESTORING '$prj_name' from '$bck_root'"
 	
@@ -46,18 +46,22 @@ println(){
 
 push_xmp_proj(){
 
-	local src=$prj_prm_dir
-	local cur_dir=$PWD
-	cd $prj_prm_dir
+	#local src=$prj_dir
+	#local cur_dir=$PWD
+	#cd $prj_dir
 
 	echo -e "\e[34mUpdating darktable files of '$prj_name'\e[39m"
-	git add *.xmp dt-lib.db 
+	git add *.xmp 
+	# git add dt-lib.db 
 
 	echo -e "\e[34mUpdating rawtherepee files of '$prj_name'\e[39m"
 	git add *.pp3 
 
 	echo -e "\e[34mUpdating pixync files of '$prj_name'\e[39m"
-	git add *.conf
+	git add pixync.conf
+
+	#echo -e "\e[34mUpdating digikam files \e[39m"
+	#git add ../digikam4.db
 
 	echo "commiting the changes of $prj_name"
 	git commit -m "changes to $prj_name"
@@ -65,67 +69,34 @@ push_xmp_proj(){
 	echo -ne "PUSHING TO REMOTE REPO ..."
 	git push origin master
 
-	echo $PWD
-	cd $cur_dir
+	#echo $PWD
+	#cd $cur_dir
 	echo "DONE"
 }
 
-pull_cache(){
-	
-	if [ ! -z $scope -a $scope!=" " ]; then
-		pull_cache_proj $scope
-	else
-		for dir in $ssd_root/*
-		do
-			if [ -d "$dir" ]
-			then
-				pull_cache_proj ${dir##*/}
-			fi
-		done
-	fi
-}
-
-pull_raw(){
-
-	echo "pulling the remote changes in 'kalutara' to local repo"
-	#git pull kalutara master
-
-	if [ ! -z $prj_prm_dir -a $prj_prm_dir!=" " ]; then
-	        pull_nas_proj $prj_name
-	else
-        for dir in $prm_root/*
-        do
-                if [ -d $dir ]
-                then
-                    pull_raw_proj $prj_name
-                fi
-        done
-	fi
-}
-
 pull_xmp_proj(){
-	local cur_dir=$PWD
-	local src=$prj_prm_dir
+	#local cur_dir=$PWD
+	#local src=$prj_dir
 
-	cd $prj_prm_dir
+	#cd $prj_dir
 	echo "pulling the remote changes in 'bitbucket' to local repo"
 	git pull origin master
-	cd $cur_dir
+	#cd $cur_dir
 }
 
 clean(){
 	# img
 	echo "removing content of img/raw"
-	rm $prj_prm_dir/img/raw/*.CR2
+	rm $prj_dir/img/raw/*.CR2
 	
 	echo "removing content of img/prc"
-	rm $prj_prm_dir/img/prc/*
+	rm $prj_dir/img/prc/*
 
 	echo "removing content of vid/raw"
-	rm $prj_prm_dir/vid/raw/*.MOV
+	rm $prj_dir/vid/raw/*.MOV
 
 	echo "removing content of vid/prc"
-	rm $prj_prm_dir/vid/prc/*
+	rm $prj_dir/vid/prc/*
 }
 
 update(){
@@ -134,13 +105,38 @@ update(){
 	echo "DONE"
 }
 
+create_proj(){
+	pixync_home=$HOME/Pictures
+	prj_name=$1
+	prj_root=${2%/}
+	prj_dir=$prj_root/$prj_name
+	mnt_point=$(stat -c '%m' $prj_root)
+	prj_path=${prj_root/$mnt_point/}/$prj_name
+	dev_uuid=$(findmnt -n -o UUID $mnt_point)
+
+	echo "Mount Point $mnt_point"
+	echo "Pixync Home $pixync_home"
+	echo "Project Name: $prj_name"
+	echo "Project Directory: $prj_dir"
+	echo "Project Path on the Device: $prj_path"
+	echo "Device ID: $dev_uuid"
+	
+	ln -s $prj_dir $pixync_home/$prj_name
+	mkdir $prj_dir $prj_dir/img $prj_dir/img/raw $prj_dir/img/prc $prj_dir/vid $prj_dir/vid/raw $prj_dir/vid/prc $prj_dir/tmp
+	create_git_repo
+#	sqlite3 $pixync_home/digikam4.db <<EOS
+#		INSERT INTO AlbumRoots (label, status, type, identifier, specificPath)
+#		VALUES ('$prj_name', 0, 2, 'volumeid:?uuid=$dev_uuid', '$prj_path');
+#	
+#EOS
+}
+
+create_git_repo(){
+	git init $prj_dir
+	cd $prj_dir && git remote add origin chamith@kalutara:pictures/$prj_name/.git
+}
+
 open_proj(){
-
-	local prj_dir=$prm_root/$prj_name
-
-	#pull_remote
-	#pull_nas
-	#pull_cache
 
 	echo "opening the catalog file $prj_name"
 	darktable --library $prj_dir/dt-lib.db $prj_dir/img/raw
@@ -149,28 +145,38 @@ open_proj(){
 
 open_proj_rt(){
 
-	local prj_dir=$prm_root/$prj_name
-
-	#pull_remote
-	#pull_nas
-	#pull_cache
-
 	echo "opening raw therapee for $prj_name"
 	rawtherapee $prj_dir/img/raw
 
 }
 set_params(){
+	pixync_home=~/Pictures
 	conf_file_name="pixync.conf"
+	prj_dir=${1%/}
+
+	if [ -L ${prj_dir} ] ; then
+   		if [ -e ${prj_dir} ] ; then
+			echo "Symbolic Link"
+			prj_dir=$(readlink -f $prj_dir)
+   		else
+      			echo "Broken link"
+   		fi
+	elif [ -e ${prj_dir} ] ; then
+   		echo "Not a link"
+	else
+   		echo "Missing"
+	fi
+
 	prj_name=$(basename ${1%/})
 	prm_root=$(dirname ${1%/})
-	prj_prm_dir=${1%/}
 
-	prj_conf_file=$prj_prm_dir/$conf_file_name
+
+	prj_conf_file=$prj_dir/$conf_file_name
 
 	if [ ! -e "$prj_conf_file" ]; then
 	    	echo $conf_file_name" file does not exist"
 		echo "setting up the default value"
-		bck_root=/nowhere
+		bck_root=kalutara:pictures
 	else 
 		echo $conf_file_name" file exists"
 
@@ -187,11 +193,18 @@ set_params(){
 
 	echo "Project Name: $prj_name"
 	echo "Backup Root: $bck_root"
-	echo "Project Primary Directory: $prj_prm_dir"
+	echo "Project Primary Directory: $prj_dir"
 	echo "Project Backup Directory: $prj_bck_dir"
 }
 
 case $1 in
+	"create" )
+		create_proj $2 $3
+	;;
+	"create_git_repo" )
+		set_params $2
+		create_git_repo 		
+	;;
 	"update" )
 		update
 	;;
