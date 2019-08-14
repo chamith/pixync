@@ -1,0 +1,1 @@
+select ar.specificPath, a.relativePath, i.name from imageinformation ii inner join images i on i.id = ii.imageid inner join albums a on i.album = a.id inner join albumroots ar on a.albumroot = ar.id where rating=5 and ar.specificPath='/home/chamith/Pictures/alwis_paule_avurudu_ulela_2019_04_20';

@@ -8,7 +8,7 @@ push_raw_proj(){
 	echo "BACKING UP '$prj_name' to '$bck_root'"
 
 	if [ -d "$src" ]; then
-		rsync -urtWv --exclude "*.xmp" --exclude "*.db" --exclude "*.conf" --exclude "*.pp3" --exclude ".dtrash" --progress $src $trg --delete
+		rsync -urtWv --exclude "*.xmp" --exclude "*.db" --exclude "*.conf" --exclude "*.pp3" --exclude ".dtrash" --exclude ".git" --progress $src $trg --delete
 		echo "DONE"
 	else
 		echo "ERROR: '$src does not exist'"
@@ -24,7 +24,7 @@ pull_raw_proj(){
 	echo "RESTORING '$prj_name' from '$bck_root'"
 	
 #	if [ -d "sftp://$src" ]; then
-		rsync -urtWv --progress $src $trg 
+		rsync -urtWv --exclude ".git" --progress $src $trg 
 		echo "DONE"
 #	else
 #		echo "ERROR: '$src does not exist'"
@@ -152,48 +152,36 @@ open_proj_rt(){
 set_params(){
 	pixync_home=~/Pictures
 	conf_file_name="pixync.conf"
-	prj_dir=${1%/}
+	path=${1%/}
 
-	if [ -L ${prj_dir} ] ; then
-   		if [ -e ${prj_dir} ] ; then
+	echo "Project Path: $path"
+	if [ -L $path ] ; then
+   		if [ -e $path ] ; then
 			echo "Symbolic Link"
-			prj_dir=$(readlink -f $prj_dir)
+			prj_dir=$(readlink -f $path)
    		else
       			echo "Broken link"
    		fi
-	elif [ -e ${prj_dir} ] ; then
+	elif [ -e $path ] ; then
    		echo "Not a link"
+		prj_dir=$(realpath $1)
 	else
    		echo "Missing"
+		prj_dir=$(realpath $1)
+		mkdir -p $prj_dir
 	fi
 
-	prj_name=$(basename ${1%/})
-	prm_root=$(dirname ${1%/})
+	echo "Project Directory: $prj_dir"
 
-
-	prj_conf_file=$prj_dir/$conf_file_name
-
-	if [ ! -e "$prj_conf_file" ]; then
-	    	echo $conf_file_name" file does not exist"
-		echo "setting up the default value"
-		bck_root=kalutara:pictures
-	else 
-		echo $conf_file_name" file exists"
-
-		IFS="="
-		while read -r name value
-		do
-			if [ "$name" = "backup" ]; then
-				bck_root=${value%/}
-			fi
-		done < $prj_conf_file
-	fi 
+	prj_name=$(basename $prj_dir)
+	prm_root=$(dirname $prj_dir)
+	bck_root=kalutara:pictures
 
 	prj_bck_dir=$bck_root/$prj_name
 
 	echo "Project Name: $prj_name"
 	echo "Backup Root: $bck_root"
-	echo "Project Primary Directory: $prj_dir"
+
 	echo "Project Backup Directory: $prj_bck_dir"
 }
 
@@ -210,7 +198,7 @@ case $1 in
 	;;
 	"import" ) 
 		set_params $3
-		/usr/lib/pixync/import $2 $prm_root/$3
+		/usr/lib/pixync/import $2 $prj_dir
 	;;
 	"open" )
 		set_params $2
@@ -243,7 +231,11 @@ case $1 in
 		push_xmp_proj
 		push_raw_proj		
 		clean $3
-		;;
+	;;
+	"test" )
+		set_params $2
+		echo "this is a test target"
+	;;
 	*)
 	echo "Welcome to Pixync - your ultimate image management suite"
 	println "TEST MESSAGE" "AMBER"
