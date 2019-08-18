@@ -5,10 +5,18 @@ push_raw_proj(){
 	local src="$prj_dir"
 	local trg="$bck_root"
 	
+
+
 	echo "BACKING UP '$prj_name' to '$bck_root'"
 
 	if [ -d "$src" ]; then
-		rsync -urtWv --exclude "*.xmp" --exclude "*.db" --exclude "*.conf" --exclude "*.pp3" --exclude ".dtrash" --exclude ".git" --progress $src $trg --delete
+		if [ "$1" == "--delete" ]; then
+			echo "pushing to the backup location w/ removing deleted files.."
+			rsync -urtWv --exclude "*.xmp" --exclude "*.db" --exclude "*.conf" --exclude "*.pp3" --exclude ".dtrash" --exclude ".git" --progress $src $trg --delete
+		else
+			echo "pushing to the backup location"
+			rsync -urtWv --exclude "*.xmp" --exclude "*.db" --exclude "*.conf" --exclude "*.pp3" --exclude ".dtrash" --exclude ".git" --progress $src $trg
+		fi		
 		echo "DONE"
 	else
 		echo "ERROR: '$src does not exist'"
@@ -86,17 +94,8 @@ pull_xmp_proj(){
 
 clean(){
 	# img
-	echo "removing content of img/raw"
-	rm $prj_dir/img/raw/*.CR2
-	
-	echo "removing content of img/prc"
-	rm $prj_dir/img/prc/*
-
-	echo "removing content of vid/raw"
-	rm $prj_dir/vid/raw/*.MOV
-
-	echo "removing content of vid/prc"
-	rm $prj_dir/vid/prc/*
+	echo "removing project $prj_dir"
+	rm $prj_dir -r
 }
 
 update(){
@@ -175,7 +174,7 @@ set_params(){
 
 	prj_name=$(basename $prj_dir)
 	prm_root=$(dirname $prj_dir)
-	bck_root=kalutara:pictures
+	bck_root=/media/chamith/ES02_WD03TB/pictures
 
 	prj_bck_dir=$bck_root/$prj_name
 
@@ -219,7 +218,7 @@ case $1 in
 	"push" ) 
 		set_params $2
 		push_xmp_proj
-		push_raw_proj
+		push_raw_proj --delete
 	;;
 	"pull" ) 
 		set_params $2
