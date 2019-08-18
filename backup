@@ -1,0 +1,4 @@
+#! /bin/bash
+src=/media/chamith/ES02_WD03TB/pictures/
+trg=/media/chamith/ES03_WD03TB/pictures_bck
+rsync -urtWv --progress $src $trg
