@@ -8,6 +8,7 @@ import yaml
 import os
 
 CONFIG_FILE_NAME = ".pixync"
+IGNORE_FILE_NAME = ".pixignore"
 
 def get_opt_val(opts, key, key_long, default_value):
     for opt in opts:
@@ -25,14 +26,12 @@ def write_config(config_file, config):
         conf_values = yaml.dump(config, file, sort_keys=True)
         print(conf_values)
 
+def write_ignore(ignore_file):
+    with open(ignore_file,'w+') as file:
+        file.writelines([".pixignore\n", ".pixync\n", ".dtrash/\n"])
+
 def get_remote_repos(config):
     return config['repos']
-
-
-
-commandLineArgs = sys.argv[1:]
-shortOpt = "duhr:"
-longOpt = ["pull", "push","help", "repo="]
 
 def get_repo(repos, repo_name):
     #print("repo_name: ", repo_name)
@@ -93,7 +92,7 @@ def cmd_push(repo_name, path = os.getcwd()):
     print('local_path: ', path)
     
     if repo != None:
-        subprocess.call(['rsync','-urtWv', '--progress' , path, remote_url])
+        subprocess.call(['rsync','-urtWv','--exclude-from=.pixignore', '--progress' , path, remote_url])
         print ("push to '{}' complete.".format(remote_url))
     else:
         print ("repo '{}' not found.".format(repo_name))
@@ -115,13 +114,32 @@ def cmd_clone(repo_url, repo_name):
 
     cmd_pull(repo_name, local_dir_path)
 
+def cmd_init(repo_url, repo_name, local_dir_path = os.getcwd()):
+    if not local_dir_path.endswith(os.path.sep):
+        local_dir_path = local_dir_path + os.path.sep
+    
+    repos = [{'name':repo_name,'url':repo_url}]
+    config = {'repos': repos}
+
+    config_file = local_dir_path + os.path.sep + CONFIG_FILE_NAME
+    write_config(config_file, config)
+    write_ignore(local_dir_path + os.path.sep + IGNORE_FILE_NAME)
+    
+    subprocess.call(['rsync', '-a', '-f+ */', '-f- *', local_dir_path, repo_url])
+
+commandLineArgs = sys.argv[1:]
+shortOpt = "iduhr:p:"
+longOpt = ["pull", "push","help","init", "repo=", "path="]
+
 opts, args = getopt.getopt(commandLineArgs, shortOpt, longOpt)
 
-#print(opts, args)
+print('opts: ', opts)
+print('args: ', args)
 
 if len(args) == 0:
     cmd_help()
     exit(0)
+
 elif args[0] == 'pull':
     if len(args) > 1:
         cmd_pull(args[1])
@@ -145,6 +163,24 @@ elif args[0] == "clone":
     print(repo_name)
     if len(args) > 1:
         cmd_clone(args[1], repo_name)
+
+elif args[0] == "init":
+
+    opts, inner_args = getopt.getopt(sys.argv[3:], shortOpt, longOpt)
+    print('opts: ', opts)
+    print('args: ', inner_args)
+
+    if len(args) > 2:
+        repo_name = args[2]
+    else:
+        repo_name = "origin"
+        
+    if len(args) < 2:
+        print("remote url not provided")
+        exit(0)
+    
+    remote_url = args[1]
+    cmd_init(remote_url, repo_name)
 
 elif args[0] == 'remote':
     write_config()
