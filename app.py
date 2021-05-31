@@ -6,15 +6,23 @@ import getopt
 import subprocess
 import yaml
 import os
-
+import glob
+import platform
+from pathlib import Path
+import time
 CONFIG_FILE_NAME = ".pixync"
 IGNORE_FILE_NAME = ".pixignore"
+SETTINGS_FILE_NAME = ".settings"
 
 def get_opt_val(opts, key, key_long, default_value):
     for opt in opts:
         if opt[0] in (key, key_long):
             return opt[1]
     return default_value
+
+def read_settings(settings_file):
+    with open(settings_file) as file:
+        return yaml.load(file, Loader=yaml.FullLoader)
 
 def read_config(config_file):
     with open(config_file) as file:
@@ -42,6 +50,15 @@ def get_repo(repos, repo_name):
     #            print(value)
                 return repo
     return None
+
+def get_path_by_ext(ext_mappings, ext):
+    for k, v in ext_mappings.items():
+        if k.lower() == ext.lower()[1:]:
+            return v
+    return 'tmp'
+
+def get_creation_date(path_to_file):
+    return time.strftime('%Y%m%d', time.localtime(os.path.getctime(path_to_file)))
 
 def cmd_help():
     print(sys.argv[0], "push|pull|help")
@@ -127,6 +144,31 @@ def cmd_init(repo_url, repo_name, local_dir_path = os.getcwd()):
     
     subprocess.call(['rsync', '-a', '-f+ */', '-f- *', local_dir_path, repo_url])
 
+def cmd_import(drive_path, local_dir_path, cam_name, delete=False):
+
+    ext_mappings = {}
+
+    for cat_key, cat_value in settings['ext-mappings'].items():
+        for subcat_key, subcat_value in cat_value.items():
+            for ext in subcat_value:
+                ext_mappings[ext] = cat_key + os.path.sep + subcat_key
+    
+    print(ext_mappings)
+
+    files = glob.iglob(drive_path + '/**/*.*', recursive=True)
+    file_count = len(glob.glob(drive_path + '/**/*.*', recursive=True))
+    running_count = 1
+    for file in files:
+        print ('[{}/{}]\t{}'.format(running_count, file_count, file))
+        creation_date = get_creation_date(file)
+        filename, file_extension = os.path.splitext(file)
+        dest = local_dir_path + os.path.sep + get_path_by_ext(ext_mappings, file_extension) + os.path.sep + creation_date + '_'+ cam_name + '_' + os.path.basename(file)
+        subprocess.call(['rsync', '-t', file, dest])
+        running_count = running_count + 1
+
+settings = read_settings(os.path.expanduser('~') + os.path.sep + SETTINGS_FILE_NAME)
+
+print(settings)
 commandLineArgs = sys.argv[1:]
 shortOpt = "iduhr:p:"
 longOpt = ["pull", "push","help","init", "repo=", "path="]
@@ -182,5 +224,7 @@ elif args[0] == "init":
     remote_url = args[1]
     cmd_init(remote_url, repo_name)
 
+elif args[0] == 'import':
+    cmd_import(args[1], args[2], args[3])
 elif args[0] == 'remote':
     write_config()

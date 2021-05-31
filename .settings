@@ -1,0 +1,13 @@
+ext-mappings:
+  img:
+    raw: 
+    - cr2
+    - cr3
+    - dng
+    prc:
+    - jpg
+    - png
+  vid:
+    raw: 
+    - mp4
+    - mov
