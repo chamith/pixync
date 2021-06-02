@@ -163,7 +163,11 @@ def cmd_import(drive_path, local_dir_path, cam_name, delete=False):
         creation_date = get_creation_date(file)
         filename, file_extension = os.path.splitext(file)
         dest = local_dir_path + os.path.sep + get_path_by_ext(ext_mappings, file_extension) + os.path.sep + creation_date + '_'+ cam_name + '_' + os.path.basename(file)
-        subprocess.call(['rsync', '-t', file, dest])
+        if delete:
+            subprocess.call(['rsync', '-t', '--delete-source-files', file, dest])
+        else:
+            subprocess.call(['rsync', '-t', file, dest])
+
         running_count = running_count + 1
 
 settings = read_settings(os.path.expanduser('~') + os.path.sep + SETTINGS_FILE_NAME)
