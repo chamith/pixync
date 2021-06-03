@@ -83,6 +83,7 @@ def config_repos_add(config, repo_name, repo_url):
         return
         
     remote_repos.insert(0,{'name':repo_name, 'url': repo_url})
+    config['repos'] = remote_repos
 
 def config_repos_set_url(config, repo_name, repo_url):
     remote_repos = get_remote_repos(config)
@@ -94,6 +95,14 @@ def config_repos_set_url(config, repo_name, repo_url):
                 
     print('remote repo \'{}\' not found'.format(repo_name))
     return
+
+def config_repos_list(config, long=False):
+    remote_repos = get_remote_repos(config)
+    for repo in remote_repos:
+        if long:
+            print(repo['name'], repo['url'])
+        else:
+            print(repo['name'])
 
 def config_repos_rename(config, repo_old_name, repo_new_name):
     remote_repos = get_remote_repos(config)
@@ -115,6 +124,11 @@ def get_path_by_ext(ext_mappings, ext):
 def get_creation_date(path_to_file):
     return time.strftime('%Y%m%d', time.localtime(os.path.getctime(path_to_file)))
 
+def get_default_local_repo_path(remote_repo_url):
+    path_comp = os.path.split(remote_repo_url)
+    dir_name = path_comp[len(path_comp)-1]
+    return os.getcwd() + os.path.sep  + dir_name
+    
 def cmd_help():
     print(sys.argv[0], "push|pull|help")
 
@@ -167,40 +181,37 @@ def cmd_push(remote_repo_name, local_repo_path = os.getcwd()):
     else:
         print ("repo '{}' not found.".format(remote_repo_name))
 
-def cmd_clone(remote_repo_url, remote_repo_name):
-    repos = [{'name':remote_repo_name,'url':remote_repo_url}]
-    config = {'repos': repos}
-    path_comp = os.path.split(remote_repo_url)
-    dir_name = path_comp[len(path_comp)-1]
-    print("remote_repo_url:", remote_repo_url)
-    print("dir_name:", dir_name)
-    local_repo_path = os.getcwd() + os.path.sep + dir_name
+    
+def cmd_clone(remote_repo_url, remote_repo_name, local_repo_path = '__DEFAULT__'):
+    if local_repo_path == '__DEFAULT__':
+        local_repo_path = get_absolute_path_with_trailing_slash(get_default_local_repo_path(remote_repo_url))
+    else:
+        local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path) 
+
     print(local_repo_path)
     os.makedirs(local_repo_path)
     print("local directory '{}' created.".format(local_repo_path))
-    config_file = local_repo_path + os.path.sep + CONFIG_FILE_NAME
-    write_config(config_file, config)
+    repos = [{'name':remote_repo_name,'url':remote_repo_url}]
+    config = {'repos': repos}
+    write_config(local_repo_path + CONFIG_FILE_NAME, config)
     print("config file created")
-
+    write_ignore(local_repo_path + IGNORE_FILE_NAME)
+    print('ignore file created')
     cmd_pull(remote_repo_name, local_repo_path)
 
-def cmd_init(remote_repo_url, remote_repo_name, local_repo_path = os.getcwd()):
+def cmd_init(local_repo_path = os.getcwd()):
     print('=== cmd_init ===')
-    print('remote_repo_url:', remote_repo_url)
-    print('remote_repo_name:', remote_repo_name)
     print('local_repo_path:', local_repo_path)
 
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
 
-    remote_repos = [{'name':remote_repo_name,'url':remote_repo_url}]
-    config = {'repos': remote_repos}
+    config = {'repos': []}
 
     Path(local_repo_path).mkdir(parents=True, exist_ok=True)
 
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
     write_ignore(local_repo_path + IGNORE_FILE_NAME)
 
-    subprocess.call(['rsync', '-a', '-f+ */', '-f- *', local_repo_path, remote_repo_url])
 
     print('local repository {} initialized successfully.'.format(local_repo_path))
 
@@ -230,6 +241,11 @@ def cmd_import(drive_path, local_repo_path, cam_name, delete=False):
 
         running_count = running_count + 1
 
+def cmd_remote_ls(long, local_repo_path = os.getcwd()):
+    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+    config = read_config(local_repo_path + CONFIG_FILE_NAME)
+    config_repos_list(config, long)
+
 def cmd_remote_set_url(remote_repo_name, remote_repo_url, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
     config = read_config(local_repo_path + CONFIG_FILE_NAME)
@@ -240,7 +256,9 @@ def cmd_remote_add(remote_repo_name, remote_repo_url, local_repo_path = os.getcw
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
     config = read_config(local_repo_path + CONFIG_FILE_NAME)
     config_repos_add(config, remote_repo_name, remote_repo_url)
+    print('config:', config)
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
+    subprocess.call(['rsync', '-a', '-f+ */', '-f- *', local_repo_path, remote_repo_url])
 
 def cmd_remote_rename(remote_repo_old_name, remote_repo_new_name, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
@@ -252,78 +270,4 @@ def cmd_remote_remove(remote_repo_name, local_repo_path = os.getcwd()):
     print('TODO: not implemented')
 
 settings = read_settings(os.path.expanduser('~') + os.path.sep + SETTINGS_FILE_NAME)
-
-# print(settings)
-# commandLineArgs = sys.argv[1:]
-# shortOpt = "dc:"
-# longOpt = ["delete-source","camera="]
-
-# opts, args = getopt.getopt(commandLineArgs, shortOpt, longOpt)
-
-# print('opts: ', opts)
-# print('args: ', args)
-
-# if len(args) == 0:
-#     cmd_help()
-#     exit(0)
-
-# elif args[0] == 'pull':
-#     if len(args) > 1:
-#         cmd_pull(args[1])
-#     else:
-#         print("repo not provided")
-#         cmd_help()
-
-# elif args[0] == 'push':
-#     if len(args) > 1:
-#         cmd_push(args[1])
-#     else:
-#         print("repo not provided")
-#         cmd_help()
-
-# elif args[0] == "clone":
-#     if len(args) > 2:
-#         remote_repo_name = args[2]
-#     else:
-#         remote_repo_name = "origin"
-    
-#     print(remote_repo_name)
-#     if len(args) > 1:
-#         cmd_clone(args[1], remote_repo_name)
-
-# elif args[0] == "init":
-
-#     opts, inner_args = getopt.getopt(sys.argv[3:], shortOpt, longOpt)
-#     print('opts: ', opts)
-#     print('args: ', inner_args)
-
-#     if len(args) > 2:
-#         remote_repo_name = args[2]
-#     else:
-#         remote_repo_name = "origin"
-        
-#     if len(args) < 2:
-#         print("remote url not provided")
-#         exit(0)
-    
-#     remote_url = args[1]
-#     cmd_init(remote_url, remote_repo_name)
-
-# elif args[0] == 'import':
-#     inner_opts, inner_args = getopt.getopt(args[3:], shortOpt, longOpt)
-#     print (inner_opts, inner_args)
-
-    # if len(args) < 3:
-    #     print("too less arguments")
-    #     exit(1)
-
-    # if len(args) < 4:
-    #     print("Camera Name: ", end ='')
-    #     cam_name = input()
-    # else:
-    #     cam_name = args[3]
-
-    # cmd_import(args[1], args[2], cam_name)
-# elif args[0] == 'remote':
-#     write_config()
 
