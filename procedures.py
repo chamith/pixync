@@ -182,8 +182,8 @@ def cmd_push(remote_repo_name, local_repo_path = os.getcwd()):
         print ("repo '{}' not found.".format(remote_repo_name))
 
     
-def cmd_clone(remote_repo_url, remote_repo_name, local_repo_path = '__DEFAULT__'):
-    if local_repo_path == '__DEFAULT__':
+def cmd_clone(remote_repo_url, remote_repo_name, local_repo_path = os.getcwd()):
+    if local_repo_path == os.getcwd():
         local_repo_path = get_absolute_path_with_trailing_slash(get_default_local_repo_path(remote_repo_url))
     else:
         local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path) 
@@ -235,7 +235,7 @@ def cmd_import(drive_path, local_repo_path, cam_name, delete=False):
         filename, file_extension = os.path.splitext(file)
         dest = local_repo_path + os.path.sep + get_path_by_ext(ext_mappings, file_extension) + os.path.sep + creation_date + '_'+ cam_name + '_' + os.path.basename(file)
         if delete:
-            subprocess.call(['rsync', '-t', '--delete-source-files', file, dest])
+            subprocess.call(['rsync', '-t', '--remove-source-files', file, dest])
         else:
             subprocess.call(['rsync', '-t', file, dest])
 
