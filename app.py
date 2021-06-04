@@ -22,11 +22,12 @@ def read_config(config_file):
     return config
 
 def write_config(config_file, config):
+    if verbose: print("Writing the config file '{}'".format(config_file))
     with open(config_file, 'w') as file:
-        conf_values = yaml.dump(config, file, sort_keys=True)
-        print(conf_values)
+        yaml.dump(config, file, sort_keys=True)
 
 def write_ignore(ignore_file):
+    if verbose: print("Writing the ignore file '{}'".format(ignore_file))
     with open(ignore_file,'w+') as file:
         file.writelines([".pixignore\n", ".pixync\n", ".dtrash/\n"])
 
@@ -39,8 +40,7 @@ def get_absolute_path_with_trailing_slash(local_repo_path):
     return get_path_with_trailing_slash(os.path.abspath(local_repo_path))
 
 def get_remote_repos(config):
-    if config['repos']:
-        return config['repos']
+    if config['repos']: return config['repos']
     return []
 
 def get_repo(repos, remote_repo_name):
@@ -55,7 +55,6 @@ def set_repo_url(repos, remote_repo_name, remote_repo_url):
         for key, value in repo.items():
             if key == 'name' and value == remote_repo_name:
                 repo['url'] = remote_repo_url
-                print(repo)
                 return
                 
     print('remote repo \'{}\' not found'.format(remote_repo_name))
@@ -85,10 +84,8 @@ def config_repos_set_url(config, repo_name, repo_url):
 def config_repos_list(config, long=False):
     remote_repos = get_remote_repos(config)
     for repo in remote_repos:
-        if long:
-            print(repo['name'], repo['url'])
-        else:
-            print(repo['name'])
+        if long: print(repo['name'], repo['url'])
+        else: print(repo['name'])
 
 def config_repos_rename(config, repo_old_name, repo_new_name):
     remote_repos = get_remote_repos(config)
@@ -103,8 +100,7 @@ def config_repos_rename(config, repo_old_name, repo_new_name):
 
 def get_path_by_ext(ext_mappings, ext):
     for k, v in ext_mappings.items():
-        if k.lower() == ext.lower()[1:]:
-            return v
+        if k.lower() == ext.lower()[1:]: return v
     return 'tmp'
 
 def get_creation_date(path_to_file):
@@ -117,6 +113,7 @@ def get_default_local_repo_path(remote_repo_url):
 
 def cmd_pull(remote_repo_name, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+
     config_file = local_repo_path + CONFIG_FILE_NAME
     config = read_config(config_file)
     repos = get_remote_repos(config)
@@ -128,11 +125,20 @@ def cmd_pull(remote_repo_name, local_repo_path = os.getcwd()):
 
     remote_repo_url = get_path_with_trailing_slash(repo['url'])
 
-    print('remote_repo_url: ', remote_repo_url)
-    print('local_path: ', local_repo_path)
+    if verbose:
+        print("--- pull ---")
+        print('remote_repo_url:\t ', remote_repo_url)
+        print('local_repo_path:\t ', local_repo_path)
+    
+    rsync_command = ['rsync','-urtW', remote_repo_url, local_repo_path]
 
-    subprocess.call(['rsync','-urtWv', '--progress', remote_repo_url , local_repo_path])
-    print ('pull from \'', remote_repo_name ,'\' complete.')
+    if verbose:
+        rsync_command.insert(2,'-v')
+        rsync_command.insert(2,'--progress')
+    
+    subprocess.call(rsync_command)
+
+    print ("Pull from '{}' to '{}' completed.".format(remote_repo_url, local_repo_path))
 
 def cmd_push(remote_repo_name, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
@@ -147,11 +153,20 @@ def cmd_push(remote_repo_name, local_repo_path = os.getcwd()):
 
     remote_repo_url = get_path_with_trailing_slash(repo['url'])
 
-    print('remote_repo_url: ', remote_repo_url)
-    print('local_path: ', local_repo_path)
+    if verbose:
+        print("---push---")
+        print('remote_repo_url: ', remote_repo_url)
+        print('local_repo_path: ', local_repo_path)
     
-    subprocess.call(['rsync','-urtWv','--exclude-from=.pixignore', '--progress' , local_repo_path, remote_repo_url])
-    print ("push to '{}' complete.".format(remote_repo_url))
+    rsync_command = ['rsync','-urtW','--exclude-from=.pixignore', local_repo_path, remote_repo_url]
+
+    if verbose:
+        rsync_command.insert(2,'-v')
+        rsync_command.insert(2,'--progress')
+    
+    subprocess.call(rsync_command)
+
+    print ("Push from '{}' to '{}' complete.".format(local_repo_path, remote_repo_url))
     
 def cmd_clone(remote_repo_url, remote_repo_name, local_repo_path = os.getcwd()):
     if local_repo_path == os.getcwd():
@@ -159,46 +174,38 @@ def cmd_clone(remote_repo_url, remote_repo_name, local_repo_path = os.getcwd()):
     else:
         local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path) 
 
+    if verbose:
+        print("---clone---")
+        print('remote_repo_url: ', remote_repo_url)
+        print('local_repo_path: ', local_repo_path) 
+
+    if os.path.exists(local_repo_path + CONFIG_FILE_NAME):
+        print("Repository '{}' already exists.".format(local_repo_path))
+        exit(1)
+
     os.makedirs(local_repo_path)
     config = {'repos': [{'name':remote_repo_name,'url':remote_repo_url}]}
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
     write_ignore(local_repo_path + IGNORE_FILE_NAME)
     cmd_pull(remote_repo_name, local_repo_path)
-    print('remote repository \'{}\' cloned into \'{}\' successfully.'.format(remote_repo_url))
+    print('Remote repository \'{}\' cloned into \'{}\' successfully.'.format(remote_repo_url))
 
 def cmd_init(local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+
+    if verbose:
+        print("---init---")
+        print('local_repo_path: ', local_repo_path) 
+
     config = {'repos': []}
-    os.makedirs(local_repo_path)
+    os.makedirs(local_repo_path, exist_ok=True)
 
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
     write_ignore(local_repo_path + IGNORE_FILE_NAME)
 
-    print('local repository {} initialized successfully.'.format(local_repo_path))
+    print('Local repository {} initialized successfully.'.format(local_repo_path))
 
-def cmd_import_old(drive_path, local_repo_path, cam_name, delete_source_files=False):
-    ext_mappings = {}
-    for cat_key, cat_value in settings['ext-mappings'].items():
-        for subcat_key, subcat_value in cat_value.items():
-            for ext in subcat_value:
-                ext_mappings[ext] = cat_key + os.path.sep + subcat_key
-
-    files = glob.iglob(drive_path + '/**/*.*', recursive=True)
-    file_count = len(glob.glob(drive_path + '/**/*.*', recursive=True))
-    running_count = 1
-    for file in files:
-        print ('[{}/{}]\t{}'.format(running_count, file_count, file))
-        creation_date = get_creation_date(file)
-        filename, file_extension = os.path.splitext(file)
-        dest = local_repo_path + os.path.sep + get_path_by_ext(ext_mappings, file_extension) + os.path.sep + creation_date + '_'+ cam_name + '_' + os.path.basename(file)
-        if delete_source_files:
-            subprocess.call(['rsync', '-t', '--remove-source-files', file, dest])
-        else:
-            subprocess.call(['rsync', '-t', file, dest])
-
-        running_count = running_count + 1
-
-def cmd_import(drive_path, local_repo_path, cam_name, delete_source_files=False):
+def cmd_import(media_source_path, local_repo_path, cam_name, delete_source_files=False):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
     ext_mappings = {}
     for cat_key, cat_value in settings['ext-mappings'].items():
@@ -208,14 +215,25 @@ def cmd_import(drive_path, local_repo_path, cam_name, delete_source_files=False)
 
     local_temp_dir = local_repo_path + os.path.sep + '__CACHE__'
 
-    print('Caching the files in the local repo path.')
-    if delete_source_files:
-        subprocess.call(['rsync','-urtWv','--progress','--remove-source-files' , drive_path, local_temp_dir])
-    else:
-        subprocess.call(['rsync','-urtWv','--progress' , drive_path, local_temp_dir])
-    print('Caching the files in the local repo path completed.')
+    if verbose:
+        print("---import---")
+        print("media_source_path:\t", media_source_path)
+        print("local_repo_path:\t", local_repo_path)
 
-    print('Moving & Renaming files in the local repo.')
+    rsync_command = ['rsync', '-urtW', media_source_path, local_temp_dir]
+
+    if verbose:
+        rsync_command.insert(2,'-v')
+        rsync_command.insert(2,'--progress')
+
+    if delete_source_files:
+        rsync_command.insert(2,'--remove-source-files')
+
+    if verbose: print('Caching the files in the local repo path.')
+    subprocess.call(rsync_command)
+    if verbose: print('Caching the files in the local repo path completed.')
+
+    if verbose: print('Moving & Renaming files in the local repo.')
     for file in glob.iglob(local_temp_dir + '/**/*.*', recursive=True):
         creation_date = get_creation_date(file)
         filename, file_extension = os.path.splitext(file)
@@ -223,9 +241,13 @@ def cmd_import(drive_path, local_repo_path, cam_name, delete_source_files=False)
         dest = dest_sub_dir+ os.path.sep + creation_date + '_'+ cam_name + '_' + os.path.basename(file)
         os.makedirs(dest_sub_dir, exist_ok=True)
         os.rename(file, dest)
-    print('Moving & Renaming files in the local repo completed.')
 
+    if verbose: print('Moving & Renaming files in the local repo completed.')
+
+    if verbose: print('Removing temporary files & directories.')
     shutil.rmtree(local_temp_dir)
+
+    print("File import completed successfully.")
 
 def cmd_remote_ls(long, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
@@ -237,33 +259,36 @@ def cmd_remote_set_url(remote_repo_name, remote_repo_url, local_repo_path = os.g
     config = read_config(local_repo_path + CONFIG_FILE_NAME)
     config_repos_set_url(config, remote_repo_name, remote_repo_url)
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
+    print("URL of the remote repository '{}' is set to '{}' successfully.".format(remote_repo_name, remote_repo_url))
 
 def cmd_remote_add(remote_repo_name, remote_repo_url, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
     config = read_config(local_repo_path + CONFIG_FILE_NAME)
     config_repos_add(config, remote_repo_name, remote_repo_url)
-    print('config:', config)
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
     subprocess.call(['rsync', '-a', '-f+ */', '-f- *', local_repo_path, remote_repo_url])
+    print("Remote repository '{}' [{}] added successfully.".format(remote_repo_name, remote_repo_url))
 
 def cmd_remote_rename(remote_repo_old_name, remote_repo_new_name, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
     config = read_config(local_repo_path + CONFIG_FILE_NAME)
     config_repos_rename(config, remote_repo_old_name, remote_repo_new_name)
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
+    print("Remote repository '{}' renamed to '{}' successfully.".format(remote_repo_old_name, remote_repo_new_name))
 
 def cmd_remote_remove(remote_repo_name, local_repo_path = os.getcwd()):
     print('TODO: not implemented')
 
 settings = read_settings(os.path.expanduser('~') + os.path.sep + SETTINGS_FILE_NAME)
 
-parser = argparse.ArgumentParser(
-    description='Synchronizes the photos amoung multiple repositories', prog="pixync")
-
-parser.add_argument('-p', '--local-repo-path', dest='local_repo_path', help='local repository path')
-
 common_parser = argparse.ArgumentParser()
 common_parser.add_argument('-p', '--local-repo-path', dest='local_repo_path', help='local repository path')
+info_group = common_parser.add_mutually_exclusive_group()
+info_group.add_argument('-v', '--verbose', action='store_true')
+info_group.add_argument('-q', '--quiet', action='store_false')
+
+parser = argparse.ArgumentParser(
+    description='Synchronizes the photos amoung multiple repositories', prog="pixync" , add_help=False, parents=[common_parser])
 
 # function
 func_parser = parser.add_subparsers(title="command", dest='func')
@@ -319,34 +344,25 @@ remote_add_parser.add_argument('remote_repo_name', metavar='name')
 
 args = parser.parse_args()
 
+verbose = args.verbose
+quiet = args.quiet
+
+if verbose: print("pixync: destributed image repository management application.")
+
 if args.local_repo_path:
     local_repo_path = args.local_repo_path
 else:
     local_repo_path = os.getcwd()
 
-if args.func == 'init':
-    cmd_init(local_repo_path)
-
-elif args.func == 'clone':
-    cmd_clone(args.remote_repo_url, args.remote_repo_name, local_repo_path)
-
-elif args.func == 'pull':
-    cmd_pull(args.remote_repo_name, local_repo_path)
-
-elif args.func == 'push':
-    cmd_push(args.remote_repo_name, local_repo_path)
-
-elif args.func == 'import':
-    cmd_import(args.media_source_path, local_repo_path, args.cam_name, args.delete_source_files)
+if args.func == 'init': cmd_init(local_repo_path)
+elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name, local_repo_path)
+elif args.func == 'pull': cmd_pull(args.remote_repo_name, local_repo_path)
+elif args.func == 'push': cmd_push(args.remote_repo_name, local_repo_path)
+elif args.func == 'import': cmd_import(args.media_source_path, local_repo_path, args.cam_name, args.delete_source_files)
 
 elif args.func == 'remote':
-    if args.remote_func == 'ls':
-        cmd_remote_ls(args.remote_ls_l, local_repo_path)
-    if args.remote_func == 'add':
-        cmd_remote_add(args.remote_repo_name, args.remote_repo_url, local_repo_path)
-    elif args.remote_func == 'set-url':
-        cmd_remote_set_url(args.remote_repo_name, args.remote_repo_url, local_repo_path)
-    elif args.remote_func == 'rename':
-        cmd_remote_rename(args.remote_repo_old_name, args.remote_repo_new_name, local_repo_path)
-    elif args.remote_func == 'remove':
-        cmd_remote_remove(args.remote_repo_name, local_repo_path)
+    if args.remote_func == 'ls': cmd_remote_ls(args.remote_ls_l, local_repo_path)
+    elif args.remote_func == 'add': cmd_remote_add(args.remote_repo_name, args.remote_repo_url, local_repo_path)
+    elif args.remote_func == 'set-url': cmd_remote_set_url(args.remote_repo_name, args.remote_repo_url, local_repo_path)
+    elif args.remote_func == 'rename': cmd_remote_rename(args.remote_repo_old_name, args.remote_repo_new_name, local_repo_path)
+    elif args.remote_func == 'remove': cmd_remote_remove(args.remote_repo_name, local_repo_path)
