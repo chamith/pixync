@@ -111,7 +111,7 @@ def get_default_local_repo_path(remote_repo_url):
     dir_name = path_comp[len(path_comp)-1]
     return os.getcwd() + os.path.sep  + dir_name
 
-def cmd_pull(remote_repo_name, local_repo_path = os.getcwd()):
+def cmd_pull(remote_repo_name, local_repo_path, delete):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
 
     config_file = local_repo_path + CONFIG_FILE_NAME
@@ -136,11 +136,14 @@ def cmd_pull(remote_repo_name, local_repo_path = os.getcwd()):
         rsync_command.insert(2,'-v')
         rsync_command.insert(2,'--progress')
     
+    if delete:
+        rsync_command.insert(2,'--delete')
+
     subprocess.call(rsync_command)
 
     print ("Pull from '{}' to '{}' completed.".format(remote_repo_url, local_repo_path))
 
-def cmd_push(remote_repo_name, local_repo_path = os.getcwd()):
+def cmd_push(remote_repo_name, local_repo_path, delete):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
     config_file = local_repo_path + CONFIG_FILE_NAME
     config = read_config(config_file)
@@ -164,6 +167,9 @@ def cmd_push(remote_repo_name, local_repo_path = os.getcwd()):
         rsync_command.insert(2,'-v')
         rsync_command.insert(2,'--progress')
     
+    if delete:
+        rsync_command.insert(2,'--delete')
+
     subprocess.call(rsync_command)
 
     print ("Push from '{}' to '{}' complete.".format(local_repo_path, remote_repo_url))
@@ -339,10 +345,12 @@ clone_parser.add_argument('-r', '--remote-repo-name', dest='remote_repo_name', h
 # pull
 pull_parser = func_parser.add_parser('pull', parents=[common_parser], add_help=False)
 pull_parser.add_argument('remote_repo_name', metavar='remote-repo-name', help='remote repository name')
+pull_parser.add_argument('--delete', dest='delete', action='store_true')
 
 # push
 push_parser = func_parser.add_parser('push', parents=[common_parser], add_help=False)
 push_parser.add_argument('remote_repo_name', metavar='remote-repo-name', help='remote repository name')
+push_parser.add_argument('--delete', dest='delete', action='store_true')
 
 # import
 import_parser = func_parser.add_parser('import', parents=[common_parser], add_help=False)
@@ -391,8 +399,8 @@ else:
 
 if args.func == 'init': cmd_init(local_repo_path)
 elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name, local_repo_path)
-elif args.func == 'pull': cmd_pull(args.remote_repo_name, local_repo_path)
-elif args.func == 'push': cmd_push(args.remote_repo_name, local_repo_path)
+elif args.func == 'pull': cmd_pull(args.remote_repo_name, local_repo_path, args.delete)
+elif args.func == 'push': cmd_push(args.remote_repo_name, local_repo_path, args.delete)
 elif args.func == 'import': cmd_import(args.media_source_path, local_repo_path, args.cam_name, args.delete_source_files)
 
 elif args.func == 'remote':
