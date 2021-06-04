@@ -84,7 +84,7 @@ def config_repos_set_url(config, repo_name, repo_url):
 def config_repos_list(config, long=False):
     remote_repos = get_remote_repos(config)
     for repo in remote_repos:
-        if long: print(repo['name'], repo['url'])
+        if long: print(repo['name'],'\t', repo['url'])
         else: print(repo['name'])
 
 def config_repos_rename(config, repo_old_name, repo_new_name):
@@ -132,7 +132,7 @@ def cmd_pull(remote_repo_name, local_repo_path = os.getcwd()):
     
     rsync_command = ['rsync','-urtW', remote_repo_url, local_repo_path]
 
-    if verbose:
+    if not quiet:
         rsync_command.insert(2,'-v')
         rsync_command.insert(2,'--progress')
     
@@ -160,7 +160,7 @@ def cmd_push(remote_repo_name, local_repo_path = os.getcwd()):
     
     rsync_command = ['rsync','-urtW','--exclude-from=.pixignore', local_repo_path, remote_repo_url]
 
-    if verbose:
+    if not quiet:
         rsync_command.insert(2,'-v')
         rsync_command.insert(2,'--progress')
     
@@ -185,8 +185,10 @@ def cmd_clone(remote_repo_url, remote_repo_name, local_repo_path = os.getcwd()):
 
     os.makedirs(local_repo_path)
     config = {'repos': [{'name':remote_repo_name,'url':remote_repo_url}]}
+
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
     write_ignore(local_repo_path + IGNORE_FILE_NAME)
+
     cmd_pull(remote_repo_name, local_repo_path)
     print('Remote repository \'{}\' cloned into \'{}\' successfully.'.format(remote_repo_url))
 
@@ -222,7 +224,7 @@ def cmd_import(media_source_path, local_repo_path, cam_name, delete_source_files
 
     rsync_command = ['rsync', '-urtW', media_source_path, local_temp_dir]
 
-    if verbose:
+    if not quiet:
         rsync_command.insert(2,'-v')
         rsync_command.insert(2,'--progress')
 
@@ -251,11 +253,23 @@ def cmd_import(media_source_path, local_repo_path, cam_name, delete_source_files
 
 def cmd_remote_ls(long, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+
+    if verbose:
+        print("---remote ls---")
+        print("local_repo_path:\t", local_repo_path)
+
     config = read_config(local_repo_path + CONFIG_FILE_NAME)
     config_repos_list(config, long)
 
 def cmd_remote_set_url(remote_repo_name, remote_repo_url, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+
+    if verbose:
+        print("---remote set-url---")
+        print("local_repo_path:\t", local_repo_path)
+        print("remote_repo_url:\t", remote_repo_url)
+        print("remote_repo_name:\t", remote_repo_name)
+    
     config = read_config(local_repo_path + CONFIG_FILE_NAME)
     config_repos_set_url(config, remote_repo_name, remote_repo_url)
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
@@ -263,6 +277,13 @@ def cmd_remote_set_url(remote_repo_name, remote_repo_url, local_repo_path = os.g
 
 def cmd_remote_add(remote_repo_name, remote_repo_url, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+
+    if verbose:
+        print("---remote set-url---")
+        print("local_repo_path:\t", local_repo_path)
+        print("remote_repo_url:\t", remote_repo_url)
+        print("remote_repo_name:\t", remote_repo_name)
+    
     config = read_config(local_repo_path + CONFIG_FILE_NAME)
     config_repos_add(config, remote_repo_name, remote_repo_url)
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
@@ -271,12 +292,26 @@ def cmd_remote_add(remote_repo_name, remote_repo_url, local_repo_path = os.getcw
 
 def cmd_remote_rename(remote_repo_old_name, remote_repo_new_name, local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+
+    if verbose:
+        print("---remote set-url---")
+        print("local_repo_path:\t", local_repo_path)
+        print("remote_repo_old_name:\t", remote_repo_old_name)
+        print("remote_repo_new_name:\t", remote_repo_new_name)
+
     config = read_config(local_repo_path + CONFIG_FILE_NAME)
     config_repos_rename(config, remote_repo_old_name, remote_repo_new_name)
     write_config(local_repo_path + CONFIG_FILE_NAME, config)
     print("Remote repository '{}' renamed to '{}' successfully.".format(remote_repo_old_name, remote_repo_new_name))
 
 def cmd_remote_remove(remote_repo_name, local_repo_path = os.getcwd()):
+    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+
+    if verbose:
+        print("---remote set-url---")
+        print("local_repo_path:\t", local_repo_path)
+        print("remote_repo_name:\t", remote_repo_name)
+        
     print('TODO: not implemented')
 
 settings = read_settings(os.path.expanduser('~') + os.path.sep + SETTINGS_FILE_NAME)
@@ -285,7 +320,7 @@ common_parser = argparse.ArgumentParser()
 common_parser.add_argument('-p', '--local-repo-path', dest='local_repo_path', help='local repository path')
 info_group = common_parser.add_mutually_exclusive_group()
 info_group.add_argument('-v', '--verbose', action='store_true')
-info_group.add_argument('-q', '--quiet', action='store_false')
+info_group.add_argument('-q', '--quiet', action='store_true')
 
 parser = argparse.ArgumentParser(
     description='Synchronizes the photos amoung multiple repositories', prog="pixync" , add_help=False, parents=[common_parser])
