@@ -17,6 +17,8 @@ DELETE_LOG = PIXYNC_DIR + "delete.log"
 IMPORT_LOG = PIXYNC_DIR + "import.log"
 IGNORE_FILE = ".pixignore"
 SETTINGS_FILE = ".settings"
+XMP_NS_RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+XMP_NS_XAP = "http://ns.adobe.com/xap/1.0/"
 
 def read_settings(settings_file):
     with open(settings_file) as file:
@@ -180,7 +182,11 @@ def cmd_pull(remote_repo_name, local_repo_path, delete):
         print('Please perform a push to \'{}\' to avoid deletion of newly imported images.'.format(remote_repo_name))
         exit(1)
 
-    rsync_command = ['rsync','-urtW', '--exclude-from='+local_repo_path+IGNORE_FILE, remote_repo_url, local_repo_path]
+    rsync_command = ['rsync','-urtW', 
+        '--exclude=.pixync/','--exclude=.trash/', 
+        '--exclude-from='+local_repo_path+IGNORE_FILE, 
+        '--exclude-from='+local_repo_path+DELETE_LOG, 
+        remote_repo_url, local_repo_path]
 
     if not quiet:
         rsync_command.insert(2,'-v')
@@ -212,7 +218,10 @@ def cmd_push(remote_repo_name, local_repo_path, delete):
         print('remote_repo_url: ', remote_repo_url)
         print('local_repo_path: ', local_repo_path)
     
-    rsync_command = ['rsync','-urtW','--exclude-from=' + local_repo_path + IGNORE_FILE, local_repo_path, remote_repo_url]
+    rsync_command = ['rsync','-urtW',
+        '--exclude=.pixync/','--exclude=.trash/',
+        '--exclude-from=' + local_repo_path + IGNORE_FILE, 
+        local_repo_path, remote_repo_url]
 
     if not quiet:
         rsync_command.insert(2,'-v')
@@ -221,7 +230,9 @@ def cmd_push(remote_repo_name, local_repo_path, delete):
     subprocess.call(rsync_command)
 
     if delete and os.path.exists(local_repo_path + DELETE_LOG):
-        rsync_delete_command = ['rsync', '-urtW', '--delete', '--include-from=' + local_repo_path + DELETE_LOG, '--exclude=*.*', local_repo_path, remote_repo_url]
+        rsync_delete_command = ['rsync', '-urtW', '--delete', 
+            '--include-from=' + local_repo_path + DELETE_LOG, 
+            '--exclude=*.*', local_repo_path, remote_repo_url]
         if not quiet:
             rsync_delete_command.insert(2,'-v')
             rsync_delete_command.insert(2,'--progress')
@@ -325,12 +336,12 @@ def cmd_cleanup(local_repo_path, rating = 0):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
     trash_path = local_repo_path + '.trash'
     os.makedirs(trash_path, exist_ok=True)
-    subprocess.call(['rsync', '--exclude=.trash', '-a', '-f+ */', '-f- *' , local_repo_path, trash_path])
+    subprocess.call(['rsync', '--exclude=.trash', '--exclude=.pixync', '-a', '-f+ */', '-f- *' , local_repo_path, trash_path])
 
-    deleted_log = open(local_repo_path + 'deleted.log','a')
+    deleted_log = open(local_repo_path + DELETE_LOG,'a')
     for file in glob.iglob(local_repo_path + '/**/*.xmp', recursive=True):
-        desc_with_rating = ET.parse(file).getroot().find("./{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF/{http://www.w3.org/1999/02/22-rdf-syntax-ns#}Description/[@{http://ns.adobe.com/xap/1.0/}Rating]")
-        r = int(desc_with_rating.get('{http://ns.adobe.com/xap/1.0/}Rating'))
+        desc_with_rating = ET.parse(file).getroot().find("./{"+XMP_NS_RDF+"}RDF/{"+XMP_NS_RDF+"}Description/[@{"+XMP_NS_XAP+"}Rating]")
+        r = int(desc_with_rating.get("{"+XMP_NS_XAP+"}Rating"))
         if r < rating:
             filename, file_extension = os.path.splitext(file)
             for file_to_delete in glob.iglob(filename + '*'):
