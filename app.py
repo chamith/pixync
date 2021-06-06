@@ -7,10 +7,12 @@ import os
 import glob
 import time
 import shutil
+import sqlite3
 import xml.etree.ElementTree as ET
 
 PIXYNC_DIR = ".pixync" + os.path.sep
 CONFIG_FILE = PIXYNC_DIR + 'config'
+DB_FILE = PIXYNC_DIR + 'activity.db'
 DELETE_LOG = PIXYNC_DIR + "delete.log"
 IMPORT_LOG = PIXYNC_DIR + "import.log"
 IGNORE_FILE = ".pixignore"
@@ -115,6 +117,42 @@ def get_default_local_repo_path(remote_repo_url):
     dir_name = path_comp[len(path_comp)-1]
     return os.getcwd() + os.path.sep  + dir_name
 
+def setup_db(local_repo_path):
+    get_absolute_path_with_trailing_slash(local_repo_path) + DB_FILE
+    conn = sqlite3.connect(get_absolute_path_with_trailing_slash(local_repo_path) + DB_FILE)
+    conn.execute("CREATE TABLE 'last_activity' ('activity' TEXT, 'repo' TEXT, 'datetime' datetime, PRIMARY KEY ('activity', 'repo'))")
+    conn.commit()
+    conn.close()
+
+def get_last_activity_time(activity, repo, local_repo_path):
+    conn = sqlite3.connect(get_absolute_path_with_trailing_slash(local_repo_path) + DB_FILE)
+    cur = conn.cursor()
+    params = (activity, repo)
+
+    cur.execute("SELECT datetime FROM last_activity WHERE activity=? AND repo=?", params)
+
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if row: return row[0]
+    return None
+
+def set_last_activity_time(activity, repo, local_repo_path):
+    conn = sqlite3.connect(get_absolute_path_with_trailing_slash(local_repo_path) + DB_FILE)
+    params = (activity, repo)
+
+    last_activity_time = get_last_activity_time(activity,repo, local_repo_path)
+
+    if last_activity_time:
+        conn.execute("UPDATE last_activity SET datetime = datetime('now') WHERE activity=? AND repo=?", params)
+    else:
+        conn.execute("INSERT INTO last_activity values(?, ?, datetime('now'))", params)
+
+    conn.commit()
+    conn.close()
+
 def cmd_pull(remote_repo_name, local_repo_path, delete):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
 
@@ -133,8 +171,16 @@ def cmd_pull(remote_repo_name, local_repo_path, delete):
         print("--- pull ---")
         print('remote_repo_url:\t ', remote_repo_url)
         print('local_repo_path:\t ', local_repo_path)
+
+    last_import_time = get_last_activity_time('import', 'local', local_repo_path)
+    last_push_time = get_last_activity_time('push', remote_repo_name, local_repo_path)
     
-    rsync_command = ['rsync','-urtW', remote_repo_url, local_repo_path]
+    if (last_import_time is None) or (last_push_time is None) or (last_import_time > last_push_time) and delete:
+        print('New images have been imported since the last push to the remote repository \'{}\''.format(remote_repo_name))
+        print('Please perform a push to \'{}\' to avoid deletion of newly imported images.'.format(remote_repo_name))
+        exit(1)
+
+    rsync_command = ['rsync','-urtW', '--exclude-from='+local_repo_path+IGNORE_FILE, remote_repo_url, local_repo_path]
 
     if not quiet:
         rsync_command.insert(2,'-v')
@@ -144,6 +190,7 @@ def cmd_pull(remote_repo_name, local_repo_path, delete):
         rsync_command.insert(2,'--delete')
 
     subprocess.call(rsync_command)
+    set_last_activity_time('pull', remote_repo_name, local_repo_path)
 
     print ("Pull from '{}' to '{}' completed.".format(remote_repo_url, local_repo_path))
 
@@ -180,6 +227,8 @@ def cmd_push(remote_repo_name, local_repo_path, delete):
             rsync_delete_command.insert(2,'--progress')
         subprocess.call(rsync_delete_command)
 
+    set_last_activity_time('push', remote_repo_name, local_repo_path)
+
     print ("Push from '{}' to '{}' complete.".format(local_repo_path, remote_repo_url))
     
 def cmd_clone(remote_repo_url, remote_repo_name, local_repo_path = os.getcwd()):
@@ -197,14 +246,15 @@ def cmd_clone(remote_repo_url, remote_repo_name, local_repo_path = os.getcwd()):
         print("Repository '{}' already exists.".format(local_repo_path))
         exit(1)
 
-    os.makedirs(local_repo_path)
+    os.makedirs(local_repo_path + PIXYNC_DIR)
     config = {'repos': [{'name':remote_repo_name,'url':remote_repo_url}]}
 
     write_config(local_repo_path + CONFIG_FILE, config)
     write_ignore(local_repo_path + IGNORE_FILE)
+    setup_db(local_repo_path)
 
-    cmd_pull(remote_repo_name, local_repo_path)
-    print('Remote repository \'{}\' cloned into \'{}\' successfully.'.format(remote_repo_url))
+    cmd_pull(remote_repo_name, local_repo_path, False)
+    print('Remote repository \'{}\' cloned into \'{}\' successfully.'.format(remote_repo_url, local_repo_path))
 
 def cmd_init(local_repo_path = os.getcwd()):
     local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
@@ -218,6 +268,7 @@ def cmd_init(local_repo_path = os.getcwd()):
 
     write_config(local_repo_path + CONFIG_FILE, config)
     write_ignore(local_repo_path + IGNORE_FILE)
+    setup_db(local_repo_path)
 
     print('Local repository {} initialized successfully.'.format(local_repo_path))
 
@@ -265,6 +316,8 @@ def cmd_import(media_source_path, local_repo_path, cam_name, delete_source_files
 
     if verbose: print('Removing temporary files & directories.')
     shutil.rmtree(local_temp_dir)
+
+    set_last_activity_time('import', 'local', local_repo_path)
 
     print("File import completed successfully.")
 
@@ -350,8 +403,6 @@ def cmd_remote_remove(remote_repo_name, local_repo_path = os.getcwd()):
         print("remote_repo_name:\t", remote_repo_name)
         
     print('TODO: not implemented')
-
-
 
 settings = read_settings(os.path.expanduser('~') + os.path.sep + SETTINGS_FILE)
 
