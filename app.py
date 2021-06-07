@@ -24,20 +24,23 @@ def read_settings(settings_file):
     with open(settings_file) as file:
         return yaml.load(file, Loader=yaml.FullLoader)
 
-def read_config(config_file):
+def read_config():
+    config_file = local_repo_path + CONFIG_FILE
     with open(config_file) as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     return config
 
-def write_config(config_file, config):
+def write_config(config):
+    config_file = local_repo_path + CONFIG_FILE
     if verbose: print("Writing the config file '{}'".format(config_file))
     with open(config_file, 'w') as file:
         yaml.dump(config, file, sort_keys=True)
 
-def write_ignore(ignore_file):
+def write_ignore():
+    ignore_file = local_repo_path + IGNORE_FILE
     if verbose: print("Writing the ignore file '{}'".format(ignore_file))
     with open(ignore_file,'w+') as file:
-        file.writelines([".pixync/\n", ".dtrash/\n", ".trash/\n"])
+        file.write('')
 
 def get_path_with_trailing_slash(remote_path):
     if not remote_path.endswith(os.path.sep):
@@ -115,19 +118,26 @@ def get_creation_date(path_to_file):
     return time.strftime('%Y%m%d', time.localtime(os.path.getctime(path_to_file)))
 
 def get_default_local_repo_path(remote_repo_url):
-    path_comp = os.path.split(remote_repo_url)
+    path_comp = os.path.split(remote_repo_url.rstrip(os.path.sep))
     dir_name = path_comp[len(path_comp)-1]
     return os.getcwd() + os.path.sep  + dir_name
 
-def setup_db(local_repo_path):
-    get_absolute_path_with_trailing_slash(local_repo_path) + DB_FILE
-    conn = sqlite3.connect(get_absolute_path_with_trailing_slash(local_repo_path) + DB_FILE)
+def setup_db():
+    db = local_repo_path + DB_FILE
+
+    if verbose: print("Deleting the existing DB.")
+
+    if os.path.exists(db): os.remove(db)
+    
+    if verbose: print("Creating DB and the Table Structures.")
+    conn = sqlite3.connect(db)
     conn.execute("CREATE TABLE 'last_activity' ('activity' TEXT, 'repo' TEXT, 'datetime' datetime, PRIMARY KEY ('activity', 'repo'))")
     conn.commit()
     conn.close()
+    if verbose: print("Creating DB and the Table Structures Completed.")
 
-def get_last_activity_time(activity, repo, local_repo_path):
-    conn = sqlite3.connect(get_absolute_path_with_trailing_slash(local_repo_path) + DB_FILE)
+def get_last_activity_time(activity, repo):
+    conn = sqlite3.connect(local_repo_path + DB_FILE)
     cur = conn.cursor()
     params = (activity, repo)
 
@@ -141,11 +151,12 @@ def get_last_activity_time(activity, repo, local_repo_path):
     if row: return row[0]
     return None
 
-def set_last_activity_time(activity, repo, local_repo_path):
-    conn = sqlite3.connect(get_absolute_path_with_trailing_slash(local_repo_path) + DB_FILE)
+def set_last_activity_time(activity, repo):
+    print(local_repo_path)
+    conn = sqlite3.connect(local_repo_path + DB_FILE) 
     params = (activity, repo)
 
-    last_activity_time = get_last_activity_time(activity,repo, local_repo_path)
+    last_activity_time = get_last_activity_time(activity,repo)
 
     if last_activity_time:
         conn.execute("UPDATE last_activity SET datetime = datetime('now') WHERE activity=? AND repo=?", params)
@@ -155,11 +166,8 @@ def set_last_activity_time(activity, repo, local_repo_path):
     conn.commit()
     conn.close()
 
-def cmd_pull(remote_repo_name, local_repo_path, delete):
-    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
-
-    config_file = local_repo_path + CONFIG_FILE
-    config = read_config(config_file)
+def cmd_pull(remote_repo_name, delete):
+    config = read_config()
     repos = get_remote_repos(config)
     repo = get_repo(repos, remote_repo_name)
 
@@ -174,18 +182,18 @@ def cmd_pull(remote_repo_name, local_repo_path, delete):
         print('remote_repo_url:\t ', remote_repo_url)
         print('local_repo_path:\t ', local_repo_path)
 
-    last_import_time = get_last_activity_time('import', 'local', local_repo_path)
-    last_push_time = get_last_activity_time('push', remote_repo_name, local_repo_path)
+    last_import_time = get_last_activity_time('import', 'local')
+    last_push_time = get_last_activity_time('push', remote_repo_name)
     
-    if (last_import_time is None) or (last_push_time is None) or (last_import_time > last_push_time) and delete:
-        print('New images have been imported since the last push to the remote repository \'{}\''.format(remote_repo_name))
-        print('Please perform a push to \'{}\' to avoid deletion of newly imported images.'.format(remote_repo_name))
-        exit(1)
+    if delete:
+        if (last_import_time) and ((last_push_time is None) or (last_import_time > last_push_time)):
+            print('New images have been imported since the last push to the remote repository \'{}\''.format(remote_repo_name))
+            print('Please perform a push to \'{}\' to avoid deletion of newly imported images.'.format(remote_repo_name))
+            exit(1)
 
     rsync_command = ['rsync','-urtW', 
         '--exclude=.pixync/','--exclude=.trash/', 
         '--exclude-from='+local_repo_path+IGNORE_FILE, 
-        '--exclude-from='+local_repo_path+DELETE_LOG, 
         remote_repo_url, local_repo_path]
 
     if not quiet:
@@ -195,15 +203,16 @@ def cmd_pull(remote_repo_name, local_repo_path, delete):
     if delete:
         rsync_command.insert(2,'--delete')
 
+    if os.path.exists(local_repo_path + DELETE_LOG):
+        rsync_command.insert(2,'--exclude-from='+local_repo_path+DELETE_LOG)
+
     subprocess.call(rsync_command)
-    set_last_activity_time('pull', remote_repo_name, local_repo_path)
+    set_last_activity_time('pull', remote_repo_name)
 
     print ("Pull from '{}' to '{}' completed.".format(remote_repo_url, local_repo_path))
 
-def cmd_push(remote_repo_name, local_repo_path, delete):
-    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
-    config_file = local_repo_path + CONFIG_FILE
-    config = read_config(config_file)
+def cmd_push(remote_repo_name, delete):
+    config = read_config()
     repos = get_remote_repos(config)
     repo = get_repo(repos, remote_repo_name)
 
@@ -238,15 +247,15 @@ def cmd_push(remote_repo_name, local_repo_path, delete):
             rsync_delete_command.insert(2,'--progress')
         subprocess.call(rsync_delete_command)
 
-    set_last_activity_time('push', remote_repo_name, local_repo_path)
+    set_last_activity_time('push', remote_repo_name)
 
     print ("Push from '{}' to '{}' complete.".format(local_repo_path, remote_repo_url))
     
-def cmd_clone(remote_repo_url, remote_repo_name, local_repo_path = os.getcwd()):
-    if local_repo_path == os.getcwd():
+def cmd_clone(remote_repo_url, remote_repo_name):
+    global local_repo_path
+
+    if local_repo_path == get_path_with_trailing_slash(os.getcwd()):
         local_repo_path = get_absolute_path_with_trailing_slash(get_default_local_repo_path(remote_repo_url))
-    else:
-        local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path) 
 
     if verbose:
         print("---clone---")
@@ -260,16 +269,14 @@ def cmd_clone(remote_repo_url, remote_repo_name, local_repo_path = os.getcwd()):
     os.makedirs(local_repo_path + PIXYNC_DIR)
     config = {'repos': [{'name':remote_repo_name,'url':remote_repo_url}]}
 
-    write_config(local_repo_path + CONFIG_FILE, config)
-    write_ignore(local_repo_path + IGNORE_FILE)
-    setup_db(local_repo_path)
+    write_config(config)
+    write_ignore()
+    setup_db()
 
-    cmd_pull(remote_repo_name, local_repo_path, False)
+    cmd_pull(remote_repo_name, False)
     print('Remote repository \'{}\' cloned into \'{}\' successfully.'.format(remote_repo_url, local_repo_path))
 
-def cmd_init(local_repo_path = os.getcwd()):
-    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
-
+def cmd_init():
     if verbose:
         print("---init---")
         print('local_repo_path: ', local_repo_path) 
@@ -277,14 +284,13 @@ def cmd_init(local_repo_path = os.getcwd()):
     config = {'repos': []}
     os.makedirs(local_repo_path, exist_ok=True)
 
-    write_config(local_repo_path + CONFIG_FILE, config)
-    write_ignore(local_repo_path + IGNORE_FILE)
-    setup_db(local_repo_path)
+    write_config(config)
+    write_ignore()
+    setup_db()
 
     print('Local repository {} initialized successfully.'.format(local_repo_path))
 
-def cmd_import(media_source_path, local_repo_path, cam_name, delete_source_files=False):
-    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+def cmd_import(media_source_path, cam_name, delete_source_files=False):
     ext_mappings = {}
     for cat_key, cat_value in settings['ext-mappings'].items():
         for subcat_key, subcat_value in cat_value.items():
@@ -328,12 +334,11 @@ def cmd_import(media_source_path, local_repo_path, cam_name, delete_source_files
     if verbose: print('Removing temporary files & directories.')
     shutil.rmtree(local_temp_dir)
 
-    set_last_activity_time('import', 'local', local_repo_path)
+    set_last_activity_time('import', 'local')
 
     print("File import completed successfully.")
 
-def cmd_cleanup(local_repo_path, rating = 0):
-    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+def cmd_cleanup(rating = 0):
     trash_path = local_repo_path + '.trash'
     os.makedirs(trash_path, exist_ok=True)
     subprocess.call(['rsync', '--exclude=.trash', '--exclude=.pixync', '-a', '-f+ */', '-f- *' , local_repo_path, trash_path])
@@ -352,18 +357,16 @@ def cmd_cleanup(local_repo_path, rating = 0):
                 os.rename(file_to_delete, trash_path + os.path.sep + rel_path)
     deleted_log.close()
 
-def cmd_remote_ls(long, local_repo_path = os.getcwd()):
-    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+def cmd_remote_ls(long):
 
     if verbose:
         print("---remote ls---")
         print("local_repo_path:\t", local_repo_path)
 
-    config = read_config(local_repo_path + CONFIG_FILE)
+    config = read_config()
     config_repos_list(config, long)
 
-def cmd_remote_set_url(remote_repo_name, remote_repo_url, local_repo_path = os.getcwd()):
-    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+def cmd_remote_set_url(remote_repo_name, remote_repo_url):
 
     if verbose:
         print("---remote set-url---")
@@ -371,13 +374,12 @@ def cmd_remote_set_url(remote_repo_name, remote_repo_url, local_repo_path = os.g
         print("remote_repo_url:\t", remote_repo_url)
         print("remote_repo_name:\t", remote_repo_name)
     
-    config = read_config(local_repo_path + CONFIG_FILE)
+    config = read_config()
     config_repos_set_url(config, remote_repo_name, remote_repo_url)
-    write_config(local_repo_path + CONFIG_FILE, config)
+    write_config(config)
     print("URL of the remote repository '{}' is set to '{}' successfully.".format(remote_repo_name, remote_repo_url))
 
-def cmd_remote_add(remote_repo_name, remote_repo_url, local_repo_path = os.getcwd()):
-    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+def cmd_remote_add(remote_repo_name, remote_repo_url):
 
     if verbose:
         print("---remote set-url---")
@@ -385,14 +387,13 @@ def cmd_remote_add(remote_repo_name, remote_repo_url, local_repo_path = os.getcw
         print("remote_repo_url:\t", remote_repo_url)
         print("remote_repo_name:\t", remote_repo_name)
     
-    config = read_config(local_repo_path + CONFIG_FILE)
+    config = read_config()
     config_repos_add(config, remote_repo_name, remote_repo_url)
-    write_config(local_repo_path + CONFIG_FILE, config)
+    write_config(config)
     subprocess.call(['rsync', '-a', '-f+ */', '-f- *', local_repo_path, remote_repo_url])
     print("Remote repository '{}' [{}] added successfully.".format(remote_repo_name, remote_repo_url))
 
-def cmd_remote_rename(remote_repo_old_name, remote_repo_new_name, local_repo_path = os.getcwd()):
-    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+def cmd_remote_rename(remote_repo_old_name, remote_repo_new_name):
 
     if verbose:
         print("---remote set-url---")
@@ -400,13 +401,12 @@ def cmd_remote_rename(remote_repo_old_name, remote_repo_new_name, local_repo_pat
         print("remote_repo_old_name:\t", remote_repo_old_name)
         print("remote_repo_new_name:\t", remote_repo_new_name)
 
-    config = read_config(local_repo_path + CONFIG_FILE)
+    config = read_config()
     config_repos_rename(config, remote_repo_old_name, remote_repo_new_name)
-    write_config(local_repo_path + CONFIG_FILE, config)
+    write_config(config)
     print("Remote repository '{}' renamed to '{}' successfully.".format(remote_repo_old_name, remote_repo_new_name))
 
-def cmd_remote_remove(remote_repo_name, local_repo_path = os.getcwd()):
-    local_repo_path = get_absolute_path_with_trailing_slash(local_repo_path)
+def cmd_remote_remove(remote_repo_name):
 
     if verbose:
         print("---remote set-url---")
@@ -414,6 +414,19 @@ def cmd_remote_remove(remote_repo_name, local_repo_path = os.getcwd()):
         print("remote_repo_name:\t", remote_repo_name)
         
     print('TODO: not implemented')
+
+def set_context(args):
+    global local_repo_path, verbose, quiet
+
+    verbose = args.verbose
+    quiet = args.quiet
+
+    if args.local_repo_path:
+        local_repo_path = get_absolute_path_with_trailing_slash(args.local_repo_path)
+    else:
+        local_repo_path = get_absolute_path_with_trailing_slash(os.getcwd())
+
+
 
 settings = read_settings(os.path.expanduser('~') + os.path.sep + SETTINGS_FILE)
 
@@ -485,25 +498,19 @@ remote_add_parser.add_argument('remote_repo_name', metavar='name')
 
 args = parser.parse_args()
 
-verbose = args.verbose
-quiet = args.quiet
+set_context(args)
 
 if verbose: print("pixync: destributed image repository management application.")
 
-if args.local_repo_path:
-    local_repo_path = args.local_repo_path
-else:
-    local_repo_path = os.getcwd()
-
-if args.func == 'init': cmd_init(local_repo_path)
-elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name, local_repo_path)
-elif args.func == 'pull': cmd_pull(args.remote_repo_name, local_repo_path, args.delete)
-elif args.func == 'push': cmd_push(args.remote_repo_name, local_repo_path, args.delete)
-elif args.func == 'import': cmd_import(args.media_source_path, local_repo_path, args.cam_name, args.delete_source_files)
-elif args.func == 'cleanup': cmd_cleanup(local_repo_path, args.rating)
+if args.func == 'init': cmd_init()
+elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name)
+elif args.func == 'pull': cmd_pull(args.remote_repo_name, args.delete)
+elif args.func == 'push': cmd_push(args.remote_repo_name, args.delete)
+elif args.func == 'import': cmd_import(args.media_source_path, args.cam_name, args.delete_source_files)
+elif args.func == 'cleanup': cmd_cleanup(args.rating)
 elif args.func == 'remote':
-    if args.remote_func == 'ls': cmd_remote_ls(args.remote_ls_l, local_repo_path)
-    elif args.remote_func == 'add': cmd_remote_add(args.remote_repo_name, args.remote_repo_url, local_repo_path)
-    elif args.remote_func == 'set-url': cmd_remote_set_url(args.remote_repo_name, args.remote_repo_url, local_repo_path)
-    elif args.remote_func == 'rename': cmd_remote_rename(args.remote_repo_old_name, args.remote_repo_new_name, local_repo_path)
-    elif args.remote_func == 'remove': cmd_remote_remove(args.remote_repo_name, local_repo_path)
+    if args.remote_func == 'ls': cmd_remote_ls(args.remote_ls_l)
+    elif args.remote_func == 'add': cmd_remote_add(args.remote_repo_name, args.remote_repo_url)
+    elif args.remote_func == 'set-url': cmd_remote_set_url(args.remote_repo_name, args.remote_repo_url)
+    elif args.remote_func == 'rename': cmd_remote_rename(args.remote_repo_old_name, args.remote_repo_new_name)
+    elif args.remote_func == 'remove': cmd_remote_remove(args.remote_repo_name)
