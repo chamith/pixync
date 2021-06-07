@@ -356,7 +356,7 @@ def cmd_cleanup(rating = 0):
     os.makedirs(trash_path, exist_ok=True)
     subprocess.call(['rsync', '--exclude=.trash', '--exclude=.pixync', '-a', '-f+ */', '-f- *' , local_repo_path, trash_path])
 
-    deleted_log = open(local_repo_path + DELETE_LOG,'a')
+    deleted_log = open(local_repo_path + DELETE_LOG,'a+')
     for file in glob.iglob(local_repo_path + '/**/*.xmp', recursive=True):
         desc_with_rating = ET.parse(file).getroot().find("./{"+XMP_NS_RDF+"}RDF/{"+XMP_NS_RDF+"}Description/[@{"+XMP_NS_XAP+"}Rating]")
         r = int(desc_with_rating.get("{"+XMP_NS_XAP+"}Rating"))
