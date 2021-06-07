@@ -166,6 +166,17 @@ def set_last_activity_time(activity, repo):
     conn.commit()
     conn.close()
 
+def set_context(args):
+    global local_repo_path, verbose, quiet
+
+    verbose = args.verbose
+    quiet = args.quiet
+
+    if args.local_repo_path:
+        local_repo_path = get_absolute_path_with_trailing_slash(args.local_repo_path)
+    else:
+        local_repo_path = get_absolute_path_with_trailing_slash(os.getcwd())
+
 def cmd_pull(remote_repo_name, delete):
     config = read_config()
     repos = get_remote_repos(config)
@@ -280,6 +291,8 @@ def cmd_init():
     if verbose:
         print("---init---")
         print('local_repo_path: ', local_repo_path) 
+
+    os.makedirs(local_repo_path + PIXYNC_DIR)
 
     config = {'repos': []}
     os.makedirs(local_repo_path, exist_ok=True)
@@ -414,19 +427,6 @@ def cmd_remote_remove(remote_repo_name):
         print("remote_repo_name:\t", remote_repo_name)
         
     print('TODO: not implemented')
-
-def set_context(args):
-    global local_repo_path, verbose, quiet
-
-    verbose = args.verbose
-    quiet = args.quiet
-
-    if args.local_repo_path:
-        local_repo_path = get_absolute_path_with_trailing_slash(args.local_repo_path)
-    else:
-        local_repo_path = get_absolute_path_with_trailing_slash(os.getcwd())
-
-
 
 settings = read_settings(os.path.expanduser('~') + os.path.sep + SETTINGS_FILE)
 
