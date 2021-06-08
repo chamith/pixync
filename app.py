@@ -357,21 +357,26 @@ def cmd_cleanup(rating = 0):
     subprocess.call(['rsync', '--exclude=.trash', '--exclude=.pixync', '-a', '-f+ */', '-f- *' , local_repo_path, trash_path])
 
     deleted_log = open(local_repo_path + DELETE_LOG,'a+')
+
+    if verbose: print("Reading the ratings")
     for file in glob.iglob(local_repo_path + '/**/*.xmp', recursive=True):
+        if verbose: print(file,'\t', end=' ')
         desc_with_rating = ET.parse(file).getroot().find("./{"+XMP_NS_RDF+"}RDF/{"+XMP_NS_RDF+"}Description/[@{"+XMP_NS_XAP+"}Rating]")
+        if not desc_with_rating:
+            if verbose: print(" [{}]".format(' '))
+            continue
         r = int(desc_with_rating.get("{"+XMP_NS_XAP+"}Rating"))
+        if verbose: print(" [{}]".format(r))
         if r < rating:
             filename, file_extension = os.path.splitext(file)
             for file_to_delete in glob.iglob(filename + '*'):
                 rel_path = os.path.relpath(file_to_delete, local_repo_path)
-                print(rel_path)
                 deleted_log.write(os.path.relpath(file_to_delete, local_repo_path))
                 deleted_log.write('\n')
                 os.rename(file_to_delete, trash_path + os.path.sep + rel_path)
     deleted_log.close()
 
 def cmd_remote_ls(long):
-
     if verbose:
         print("---remote ls---")
         print("local_repo_path:\t", local_repo_path)
@@ -380,7 +385,6 @@ def cmd_remote_ls(long):
     config_repos_list(config, long)
 
 def cmd_remote_set_url(remote_repo_name, remote_repo_url):
-
     if verbose:
         print("---remote set-url---")
         print("local_repo_path:\t", local_repo_path)
@@ -393,7 +397,6 @@ def cmd_remote_set_url(remote_repo_name, remote_repo_url):
     print("URL of the remote repository '{}' is set to '{}' successfully.".format(remote_repo_name, remote_repo_url))
 
 def cmd_remote_add(remote_repo_name, remote_repo_url):
-
     if verbose:
         print("---remote set-url---")
         print("local_repo_path:\t", local_repo_path)
@@ -407,7 +410,6 @@ def cmd_remote_add(remote_repo_name, remote_repo_url):
     print("Remote repository '{}' [{}] added successfully.".format(remote_repo_name, remote_repo_url))
 
 def cmd_remote_rename(remote_repo_old_name, remote_repo_new_name):
-
     if verbose:
         print("---remote set-url---")
         print("local_repo_path:\t", local_repo_path)
@@ -420,7 +422,6 @@ def cmd_remote_rename(remote_repo_old_name, remote_repo_new_name):
     print("Remote repository '{}' renamed to '{}' successfully.".format(remote_repo_old_name, remote_repo_new_name))
 
 def cmd_remote_remove(remote_repo_name):
-
     if verbose:
         print("---remote set-url---")
         print("local_repo_path:\t", local_repo_path)
