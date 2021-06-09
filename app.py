@@ -152,7 +152,6 @@ def get_last_activity_time(activity, repo):
     return None
 
 def set_last_activity_time(activity, repo):
-    print(local_repo_path)
     conn = sqlite3.connect(local_repo_path + DB_FILE) 
     params = (activity, repo)
 
@@ -248,6 +247,17 @@ def cmd_push(remote_repo_name, delete):
         rsync_command.insert(2,'--progress')
 
     subprocess.call(rsync_command)
+
+    rsync_commit_command = ['rsync','-urtW',
+        '--include=.commit/',
+        '--exclude=*.*', 
+        local_repo_path, remote_repo_url]
+
+    if not quiet:
+        rsync_commit_command.insert(2,'-v')
+        rsync_commit_command.insert(2,'--progress')
+
+    subprocess.call(rsync_commit_command)
 
     if delete and os.path.exists(local_repo_path + DELETE_LOG):
         rsync_delete_command = ['rsync', '-urtW', '--delete', 
@@ -357,12 +367,11 @@ def cmd_cleanup(rating = 0):
     subprocess.call(['rsync', '--exclude=.trash', '--exclude=.pixync', '-a', '-f+ */', '-f- *' , local_repo_path, trash_path])
 
     deleted_log = open(local_repo_path + DELETE_LOG,'a+')
-
     if verbose: print("Reading the ratings")
     for file in glob.iglob(local_repo_path + '/**/*.xmp', recursive=True):
         if verbose: print(file,'\t', end=' ')
         desc_with_rating = ET.parse(file).getroot().find("./{"+XMP_NS_RDF+"}RDF/{"+XMP_NS_RDF+"}Description/[@{"+XMP_NS_XAP+"}Rating]")
-        if not desc_with_rating:
+        if desc_with_rating is None:
             if verbose: print(" [{}]".format(' '))
             continue
         r = int(desc_with_rating.get("{"+XMP_NS_XAP+"}Rating"))
@@ -429,8 +438,9 @@ def cmd_remote_remove(remote_repo_name):
         
     print('TODO: not implemented')
 
-settings = read_settings(os.path.expanduser('~') + os.path.sep + SETTINGS_FILE)
 
+## argparse
+# common
 common_parser = argparse.ArgumentParser()
 common_parser.add_argument('-p', '--local-repo-path', dest='local_repo_path', help='local repository path')
 info_group = common_parser.add_mutually_exclusive_group()
@@ -438,7 +448,8 @@ info_group.add_argument('-v', '--verbose', action='store_true')
 info_group.add_argument('-q', '--quiet', action='store_true')
 
 parser = argparse.ArgumentParser(
-    description='Synchronizes the photos amoung multiple repositories', prog="pixync" , add_help=False, parents=[common_parser])
+    description='Synchronizes the photos amoung multiple repositories', 
+    prog="pixync" , add_help=False, parents=[common_parser])
 
 # function
 func_parser = parser.add_subparsers(title="command", dest='func')
@@ -467,6 +478,7 @@ import_parser.add_argument('media_source_path', metavar='media-source-path', hel
 import_parser.add_argument('-c', '--camera-name', dest='cam_name', help='camera id', required=True)
 import_parser.add_argument('--delete-source-files', dest='delete_source_files', action='store_true')
 
+# cleanup
 cleanup_parser = func_parser.add_parser('cleanup', parents=[common_parser], add_help=False)
 cleanup_parser.add_argument('-r', '--rating', dest='rating', help='rating', default=0, type=int)
 
@@ -497,11 +509,21 @@ remote_add_parser.add_argument('remote_repo_new_name', metavar='new_name')
 remote_add_parser = remote_func_parser.add_parser('remove', parents=[common_parser], add_help=False)
 remote_add_parser.add_argument('remote_repo_name', metavar='name')
 
-args = parser.parse_args()
+help_parser = func_parser.add_parser('help', parents=[common_parser], add_help=False)
 
+args = parser.parse_args()
 set_context(args)
 
 if verbose: print("pixync: destributed image repository management application.")
+
+settings_file = os.path.expanduser('~') + os.path.sep + PIXYNC_DIR + SETTINGS_FILE
+
+if not os.path.exists(settings_file):
+    settings_file = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + SETTINGS_FILE
+
+if verbose: print("Settings File: ", settings_file)
+
+settings = read_settings(settings_file)
 
 if args.func == 'init': cmd_init()
 elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name)
@@ -515,3 +537,5 @@ elif args.func == 'remote':
     elif args.remote_func == 'set-url': cmd_remote_set_url(args.remote_repo_name, args.remote_repo_url)
     elif args.remote_func == 'rename': cmd_remote_rename(args.remote_repo_old_name, args.remote_repo_new_name)
     elif args.remote_func == 'remove': cmd_remote_remove(args.remote_repo_name)
+else:
+    parser.print_help()
