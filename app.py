@@ -9,16 +9,18 @@ import time
 import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
-
+import gdrive_uploader
 PIXYNC_DIR = ".pixync" + os.path.sep
 CONFIG_FILE = PIXYNC_DIR + 'config'
 DB_FILE = PIXYNC_DIR + 'activity.db'
 DELETE_LOG = PIXYNC_DIR + "delete.log"
 IMPORT_LOG = PIXYNC_DIR + "import.log"
 IGNORE_FILE = ".pixignore"
-SETTINGS_FILE = ".settings"
+SETTINGS_FILE = "settings.yaml"
 XMP_NS_RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 XMP_NS_XAP = "http://ns.adobe.com/xap/1.0/"
+
+GOOGLE_API_ACCESS_TOKEN = 'google-api-access-token.json'
 
 def read_settings(settings_file):
     with open(settings_file) as file:
@@ -166,10 +168,11 @@ def set_last_activity_time(activity, repo):
     conn.close()
 
 def set_context(args):
-    global local_repo_path, verbose, quiet
+    global local_repo_path, verbose, quiet, google_api_service_account_file
 
     verbose = args.verbose
     quiet = args.quiet
+    google_api_service_account_file = args.access_token
 
     if args.local_repo_path:
         local_repo_path = get_absolute_path_with_trailing_slash(args.local_repo_path)
@@ -385,6 +388,18 @@ def cmd_cleanup(rating = 0):
                 os.rename(file_to_delete, trash_path + os.path.sep + rel_path)
     deleted_log.close()
 
+def cmd_upload(rating):
+    global google_api_service_account_file
+    if google_api_service_account_file:
+        gdrive_uploader.google_api_service_account_file = google_api_service_account_file
+    else:
+        gdrive_uploader.google_api_service_account_file = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + GOOGLE_API_ACCESS_TOKEN
+    
+    gdrive_uploader.local_repo_path = local_repo_path
+    gdrive_uploader.verbose = verbose
+    gdrive_uploader.quiet = quiet
+    gdrive_uploader.upload_to_gdrive(rating)
+
 def cmd_remote_ls(long):
     if verbose:
         print("---remote ls---")
@@ -482,6 +497,11 @@ import_parser.add_argument('--delete-source-files', dest='delete_source_files', 
 cleanup_parser = func_parser.add_parser('cleanup', parents=[common_parser], add_help=False)
 cleanup_parser.add_argument('-r', '--rating', dest='rating', help='rating', default=0, type=int)
 
+# upload
+upload_parser = func_parser.add_parser('upload', parents=[common_parser], add_help=False)
+upload_parser.add_argument('-t', '--access-token', dest='access_token', help='access token')
+upload_parser.add_argument('-r', '--rating', dest='rating', help='rating', default=5, type=int)
+
 # remote
 remote_parser = func_parser.add_parser('remote', parents=[common_parser], add_help=False)
 remote_func_parser = remote_parser.add_subparsers(title='remote function', dest='remote_func')
@@ -531,6 +551,7 @@ elif args.func == 'pull': cmd_pull(args.remote_repo_name, args.delete)
 elif args.func == 'push': cmd_push(args.remote_repo_name, args.delete)
 elif args.func == 'import': cmd_import(args.media_source_path, args.cam_name, args.delete_source_files)
 elif args.func == 'cleanup': cmd_cleanup(args.rating)
+elif args.func == 'upload': cmd_upload(args.rating)
 elif args.func == 'remote':
     if args.remote_func == 'ls': cmd_remote_ls(args.remote_ls_l)
     elif args.remote_func == 'add': cmd_remote_add(args.remote_repo_name, args.remote_repo_url)

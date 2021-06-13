@@ -1,0 +1,32 @@
+ext-mappings:
+  img:
+    raw: 
+    - cr2
+    - cr3
+    - dng
+    prc:
+    - jpg
+    - png
+  vid:
+    raw: 
+    - mp4
+    - mov
+gdrive-mime-type-mappings:
+  application/octet-stream: 
+  - cr2
+  - cr3
+  image/dng:
+  - dng
+  image/jepg:
+  - jpg
+  image/png:
+  - png
+  video/mp4: 
+  - mp4
+  video/quicktime:
+  - mov
+  application/xml:
+  - xmp
+  text/plain:
+  - arp
+  - pp3
