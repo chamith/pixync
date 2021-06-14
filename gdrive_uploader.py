@@ -1,4 +1,4 @@
-#! /bin/python3
+#! /usr/bin/python3
 # 
 # # https://developers.google.com/drive/api/v3/quickstart/python
 from __future__ import print_function
