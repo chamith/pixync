@@ -164,28 +164,3 @@ def upload_to_gdrive(rating):
             print("File '{}' already in GDrive ".format(file), end='')
             if verbose: print('[Id: {}]'.format(items[0].get('id')))
             else: print('')
-
-def main():
-    """Shows basic usage of the Drive v3 API.
-    Prints the names and ids of the first 10 files the user has access to.
-    """
-    #reds = Credentials.from_service_account_file("credentials.json")
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    global local_repo_path, google_api_credentials, verbose, quiet
-    verbose = True
-    quiet = False
-    
-    if len(sys.argv) < 2:
-        print("too less arguments")
-        exit(1)
-
-    local_repo_path = get_absolute_path_with_trailing_slash(sys.argv[1])
-    rating = int(sys.argv[2]) if len(sys.argv) > 2 else 5
-    google_api_credentials = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + 'pixync-service-key.json'
-    set_credentials_as_service()
-    upload_to_gdrive(rating)
-
-if __name__ == '__main__':
-    main()
