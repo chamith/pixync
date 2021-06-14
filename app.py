@@ -399,7 +399,8 @@ def cmd_upload(rating):
     gdrive_uploader.local_repo_path = local_repo_path
     gdrive_uploader.verbose = verbose
     gdrive_uploader.quiet = quiet
-    gdrive_uploader.set_credentials_as_client()
+
+    gdrive_uploader.set_credentials_as_service() if args.service else gdrive_uploader.set_credentials_as_client()
     gdrive_uploader.upload_to_gdrive(rating)
 
 def cmd_remote_ls(long):
@@ -503,6 +504,7 @@ cleanup_parser.add_argument('-r', '--rating', dest='rating', help='rating', defa
 upload_parser = func_parser.add_parser('upload', parents=[common_parser], add_help=False)
 upload_parser.add_argument('-t', '--access-token', dest='access_token', help='access token')
 upload_parser.add_argument('-r', '--rating', dest='rating', help='rating', default=5, type=int)
+upload_parser.add_argument('-s', '--service', dest='service', help='run as service', action='store_true')
 
 # remote
 remote_parser = func_parser.add_parser('remote', parents=[common_parser], add_help=False)
