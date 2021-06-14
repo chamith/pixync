@@ -4,6 +4,7 @@
 from __future__ import print_function
 import os.path
 from posixpath import relpath
+from google.oauth2 import credentials
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -78,6 +79,28 @@ def get_files(local_repo_path, rating):
                 files.append(rel_path)
     return files
 
+def set_credentials_as_client():
+    global creds
+    creds = None
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', GOOGLE_API_SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                google_api_credentials, GOOGLE_API_SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+
+def set_credentials_as_service():
+    global creds
+    creds = service_account.Credentials.from_service_account_file(
+    google_api_credentials, scopes=GOOGLE_API_SCOPES)
+
 def upload_to_gdrive(rating):
     global path_mappings 
     path_mappings = {}
@@ -97,9 +120,6 @@ def upload_to_gdrive(rating):
     if verbose:
         print("repo to upload: ", repo_name) 
         print("rating >= ", rating)
-
-    creds = service_account.Credentials.from_service_account_file(
-        google_api_service_account_file, scopes=GOOGLE_API_SCOPES)
 
     gdrive_service = build('drive', 'v3', credentials=creds)
 
@@ -146,11 +166,12 @@ def main():
     # created automatically when the authorization flow completes for the first
     # time.
     global local_repo_path
-    global google_api_service_account_file
+    global google_api_credentials
 
     local_repo_path = sys.argv[1]
     rating = int(sys.argv[2]) if len(sys.argv) > 2 else 5
-    google_api_service_account_file = 'google-api-access-token.json'
+    google_api_credentials = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + 'pixync-service-key.json'
+    set_credentials_as_service()
     upload_to_gdrive(rating)
 
 if __name__ == '__main__':

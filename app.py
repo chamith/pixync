@@ -20,7 +20,7 @@ SETTINGS_FILE = "settings.yaml"
 XMP_NS_RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 XMP_NS_XAP = "http://ns.adobe.com/xap/1.0/"
 
-GOOGLE_API_ACCESS_TOKEN = 'google-api-access-token.json'
+GOOGLE_API_ACCESS_TOKEN = 'pixync-client-secret.json'
 
 def read_settings(settings_file):
     with open(settings_file) as file:
@@ -117,7 +117,7 @@ def get_path_by_ext(ext_mappings, ext):
     return 'tmp'
 
 def get_creation_date(path_to_file):
-    return time.strftime('%Y%m%d', time.localtime(os.path.getctime(path_to_file)))
+    return time.strftime('%Y%m%d', time.localtime(os.path.getmtime(path_to_file)))
 
 def get_default_local_repo_path(remote_repo_url):
     path_comp = os.path.split(remote_repo_url.rstrip(os.path.sep))
@@ -168,16 +168,17 @@ def set_last_activity_time(activity, repo):
     conn.close()
 
 def set_context(args):
-    global local_repo_path, verbose, quiet, google_api_service_account_file
+    global local_repo_path, verbose, quiet, google_api_client_secret
 
     verbose = args.verbose
     quiet = args.quiet
-    google_api_service_account_file = args.access_token
 
     if args.local_repo_path:
         local_repo_path = get_absolute_path_with_trailing_slash(args.local_repo_path)
     else:
         local_repo_path = get_absolute_path_with_trailing_slash(os.getcwd())
+
+
 
 def cmd_pull(remote_repo_name, delete):
     config = read_config()
@@ -389,15 +390,16 @@ def cmd_cleanup(rating = 0):
     deleted_log.close()
 
 def cmd_upload(rating):
-    global google_api_service_account_file
-    if google_api_service_account_file:
-        gdrive_uploader.google_api_service_account_file = google_api_service_account_file
+
+    if args.access_token:
+        gdrive_uploader.google_api_credentials = args.access_token
     else:
-        gdrive_uploader.google_api_service_account_file = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + GOOGLE_API_ACCESS_TOKEN
-    
+        gdrive_uploader.google_api_credentials = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + GOOGLE_API_ACCESS_TOKEN
+
     gdrive_uploader.local_repo_path = local_repo_path
     gdrive_uploader.verbose = verbose
     gdrive_uploader.quiet = quiet
+    gdrive_uploader.set_credentials_as_client()
     gdrive_uploader.upload_to_gdrive(rating)
 
 def cmd_remote_ls(long):
