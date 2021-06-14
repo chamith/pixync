@@ -79,6 +79,14 @@ def get_files(local_repo_path, rating):
                 files.append(rel_path)
     return files
 
+def get_path_with_trailing_slash(path):
+    if not path.endswith(os.path.sep):
+        return path + os.path.sep
+    return path
+
+def get_absolute_path_with_trailing_slash(path):
+    return get_path_with_trailing_slash(os.path.abspath(path))
+
 def set_credentials_as_client():
     global creds
     creds = None
@@ -165,10 +173,15 @@ def main():
     # The file token.json stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
     # time.
-    global local_repo_path
-    global google_api_credentials
+    global local_repo_path, google_api_credentials, verbose, quiet
+    verbose = True
+    quiet = False
+    
+    if len(sys.argv) < 2:
+        print("too less arguments")
+        exit(1)
 
-    local_repo_path = sys.argv[1]
+    local_repo_path = get_absolute_path_with_trailing_slash(sys.argv[1])
     rating = int(sys.argv[2]) if len(sys.argv) > 2 else 5
     google_api_credentials = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + 'pixync-service-key.json'
     set_credentials_as_service()
