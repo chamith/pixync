@@ -9,34 +9,42 @@ import time
 import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
-import gdrive_uploader
+import gdrive_adapter
 PIXYNC_DIR = ".pixync" + os.path.sep
-CONFIG_FILE = PIXYNC_DIR + 'config'
+CONFIG_FILE_NAME = 'config.yaml'
+CONFIG_FILE = PIXYNC_DIR + CONFIG_FILE_NAME
 DB_FILE = PIXYNC_DIR + 'activity.db'
 DELETE_LOG = PIXYNC_DIR + "delete.log"
 IMPORT_LOG = PIXYNC_DIR + "import.log"
 IGNORE_FILE = ".pixignore"
-SETTINGS_FILE = "settings.yaml"
 XMP_NS_RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 XMP_NS_XAP = "http://ns.adobe.com/xap/1.0/"
 
-GOOGLE_API_ACCESS_TOKEN = 'pixync-client-secret.json'
-
-def read_settings(settings_file):
-    with open(settings_file) as file:
-        return yaml.load(file, Loader=yaml.FullLoader)
+config_settings_global = {}
+config_settings_local = {}
 
 def read_config():
-    config_file = local_repo_path + CONFIG_FILE
-    with open(config_file) as file:
-        config = yaml.load(file, Loader=yaml.FullLoader)
-    return config
+    global config_settings_local, config_settings_global
 
-def write_config(config):
+    config_file_global = os.path.expanduser('~') + os.path.sep + CONFIG_FILE
+    if not os.path.exists(config_file_global):
+        config_file_global = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + CONFIG_FILE_NAME
+
+    with open(config_file_global) as file:
+        config_settings_global = yaml.load(file, Loader=yaml.FullLoader)
+
+    if local_repo_path:
+        config_file_local = local_repo_path + CONFIG_FILE
+
+        if os.path.exists(config_file_local):
+            with open(local_repo_path + CONFIG_FILE) as file:
+                config_settings_local = yaml.load(file, Loader=yaml.FullLoader)
+
+def write_config_local():
     config_file = local_repo_path + CONFIG_FILE
     if verbose: print("Writing the config file '{}'".format(config_file))
     with open(config_file, 'w') as file:
-        yaml.dump(config, file, sort_keys=True)
+        yaml.dump(config_settings_local, file, sort_keys=True)
 
 def write_ignore():
     ignore_file = local_repo_path + IGNORE_FILE
@@ -52,8 +60,8 @@ def get_path_with_trailing_slash(remote_path):
 def get_absolute_path_with_trailing_slash(local_repo_path):
     return get_path_with_trailing_slash(os.path.abspath(local_repo_path))
 
-def get_remote_repos(config):
-    if config['repos']: return config['repos']
+def get_remote_repos():
+    if config_settings_local['repos']: return config_settings_local['repos']
     return []
 
 def get_repo(repos, remote_repo_name):
@@ -73,18 +81,18 @@ def set_repo_url(repos, remote_repo_name, remote_repo_url):
     print('remote repo \'{}\' not found'.format(remote_repo_name))
     return
 
-def config_repos_add(config, repo_name, repo_url):
-    remote_repos = get_remote_repos(config)
+def config_repos_add(repo_name, repo_url):
+    remote_repos = get_remote_repos()
 
     if get_repo(remote_repos, repo_name):
         print('repo exists already.')
         return
         
     remote_repos.insert(0,{'name':repo_name, 'url': repo_url})
-    config['repos'] = remote_repos
+    config_settings_local['repos'] = remote_repos
 
-def config_repos_set_url(config, repo_name, repo_url):
-    remote_repos = get_remote_repos(config)
+def config_repos_set_url(repo_name, repo_url):
+    remote_repos = get_remote_repos()
     for repo in remote_repos:
         for key, value in repo.items():
             if key == 'name' and value == repo_name:
@@ -94,14 +102,14 @@ def config_repos_set_url(config, repo_name, repo_url):
     print('remote repo \'{}\' not found'.format(repo_name))
     return
 
-def config_repos_list(config, long=False):
-    remote_repos = get_remote_repos(config)
+def config_repos_list(long=False):
+    remote_repos = get_remote_repos()
     for repo in remote_repos:
         if long: print(repo['name'],'\t', repo['url'])
         else: print(repo['name'])
 
-def config_repos_rename(config, repo_old_name, repo_new_name):
-    remote_repos = get_remote_repos(config)
+def config_repos_rename(repo_old_name, repo_new_name):
+    remote_repos = get_remote_repos()
     for repo in remote_repos:
         for key, value in repo.items():
             if key == 'name' and value == repo_old_name:
@@ -178,7 +186,12 @@ def set_context(args):
     else:
         local_repo_path = get_absolute_path_with_trailing_slash(os.getcwd())
 
+def cmd_config_show():
+    print('global config: ')
+    print(config_settings_global)
 
+    print('local config: ')
+    print(config_settings_local)
 
 def cmd_pull(remote_repo_name, delete):
     config = read_config()
@@ -277,7 +290,7 @@ def cmd_push(remote_repo_name, delete):
     print ("Push from '{}' to '{}' complete.".format(local_repo_path, remote_repo_url))
     
 def cmd_clone(remote_repo_url, remote_repo_name):
-    global local_repo_path
+    global local_repo_path, config_settings_local
 
     if local_repo_path == get_path_with_trailing_slash(os.getcwd()):
         local_repo_path = get_absolute_path_with_trailing_slash(get_default_local_repo_path(remote_repo_url))
@@ -292,9 +305,9 @@ def cmd_clone(remote_repo_url, remote_repo_name):
         exit(1)
 
     os.makedirs(local_repo_path + PIXYNC_DIR)
-    config = {'repos': [{'name':remote_repo_name,'url':remote_repo_url}]}
+    config_settings_local = {'repos': [{'name':remote_repo_name,'url':remote_repo_url}]}
 
-    write_config(config)
+    write_config_local()
     write_ignore()
     setup_db()
 
@@ -302,16 +315,17 @@ def cmd_clone(remote_repo_url, remote_repo_name):
     print('Remote repository \'{}\' cloned into \'{}\' successfully.'.format(remote_repo_url, local_repo_path))
 
 def cmd_init():
+    global config_settings_local
     if verbose:
         print("---init---")
         print('local_repo_path: ', local_repo_path) 
 
     os.makedirs(local_repo_path + PIXYNC_DIR)
 
-    config = {'repos': []}
+    config_settings_local = {'repos': []}
     os.makedirs(local_repo_path, exist_ok=True)
 
-    write_config(config)
+    write_config_local()
     write_ignore()
     setup_db()
 
@@ -319,7 +333,7 @@ def cmd_init():
 
 def cmd_import(media_source_path, cam_name, delete_source_files=False):
     ext_mappings = {}
-    for cat_key, cat_value in settings['ext-mappings'].items():
+    for cat_key, cat_value in config_settings_global['ext-mappings'].items():
         for subcat_key, subcat_value in cat_value.items():
             for ext in subcat_value:
                 ext_mappings[ext] = cat_key + os.path.sep + subcat_key
@@ -348,7 +362,7 @@ def cmd_import(media_source_path, cam_name, delete_source_files=False):
     import_log = open(local_repo_path + IMPORT_LOG, "a")
     for file in glob.iglob(local_temp_dir + '/**/*.*', recursive=True):
         creation_date = get_creation_date(file)
-        filename, file_extension = os.path.splitext(file)
+        file_extension = os.path.splitext(file)[1]
         dest_sub_dir = local_repo_path + get_path_by_ext(ext_mappings, file_extension)
         dest = dest_sub_dir+ os.path.sep + creation_date + '_'+ cam_name + '_' + os.path.basename(file)
         os.makedirs(dest_sub_dir, exist_ok=True)
@@ -391,25 +405,20 @@ def cmd_cleanup(rating = 0):
 
 def cmd_upload(rating):
 
-    if args.access_token:
-        gdrive_uploader.google_api_credentials = args.access_token
-    else:
-        gdrive_uploader.google_api_credentials = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + GOOGLE_API_ACCESS_TOKEN
+    gdrive_adapter.local_repo_path = local_repo_path
+    gdrive_adapter.verbose = verbose
+    gdrive_adapter.quiet = quiet
 
-    gdrive_uploader.local_repo_path = local_repo_path
-    gdrive_uploader.verbose = verbose
-    gdrive_uploader.quiet = quiet
-
-    gdrive_uploader.set_credentials_as_service() if args.service else gdrive_uploader.set_credentials_as_client()
-    gdrive_uploader.upload_to_gdrive(rating)
+    gdrive_adapter.set_config(config_settings_global)
+    gdrive_adapter.set_service_credentials(args.access_token) if args.service else gdrive_adapter.set_client_credentials(args.access_token)
+    gdrive_adapter.upload_to_gdrive(rating)
 
 def cmd_remote_ls(long):
     if verbose:
         print("---remote ls---")
         print("local_repo_path:\t", local_repo_path)
 
-    config = read_config()
-    config_repos_list(config, long)
+    config_repos_list(long)
 
 def cmd_remote_set_url(remote_repo_name, remote_repo_url):
     if verbose:
@@ -418,9 +427,8 @@ def cmd_remote_set_url(remote_repo_name, remote_repo_url):
         print("remote_repo_url:\t", remote_repo_url)
         print("remote_repo_name:\t", remote_repo_name)
     
-    config = read_config()
-    config_repos_set_url(config, remote_repo_name, remote_repo_url)
-    write_config(config)
+    config_repos_set_url(remote_repo_name, remote_repo_url)
+    write_config_local()
     print("URL of the remote repository '{}' is set to '{}' successfully.".format(remote_repo_name, remote_repo_url))
 
 def cmd_remote_add(remote_repo_name, remote_repo_url):
@@ -430,9 +438,8 @@ def cmd_remote_add(remote_repo_name, remote_repo_url):
         print("remote_repo_url:\t", remote_repo_url)
         print("remote_repo_name:\t", remote_repo_name)
     
-    config = read_config()
-    config_repos_add(config, remote_repo_name, remote_repo_url)
-    write_config(config)
+    config_repos_add(remote_repo_name, remote_repo_url)
+    write_config_local()
     subprocess.call(['rsync', '-a', '-f+ */', '-f- *', local_repo_path, remote_repo_url])
     print("Remote repository '{}' [{}] added successfully.".format(remote_repo_name, remote_repo_url))
 
@@ -443,9 +450,8 @@ def cmd_remote_rename(remote_repo_old_name, remote_repo_new_name):
         print("remote_repo_old_name:\t", remote_repo_old_name)
         print("remote_repo_new_name:\t", remote_repo_new_name)
 
-    config = read_config()
-    config_repos_rename(config, remote_repo_old_name, remote_repo_new_name)
-    write_config(config)
+    config_repos_rename(remote_repo_old_name, remote_repo_new_name)
+    write_config_local()
     print("Remote repository '{}' renamed to '{}' successfully.".format(remote_repo_old_name, remote_repo_new_name))
 
 def cmd_remote_remove(remote_repo_name):
@@ -533,21 +539,20 @@ remote_add_parser.add_argument('remote_repo_new_name', metavar='new_name')
 remote_add_parser = remote_func_parser.add_parser('remove', parents=[common_parser], add_help=False)
 remote_add_parser.add_argument('remote_repo_name', metavar='name')
 
+# config
+config_parser = func_parser.add_parser('config', parents=[common_parser], add_help=False)
+config_func_parser = config_parser.add_subparsers(title='config function', dest='config_func')
+
+# config show
+config_show_parser = config_func_parser.add_parser('show', parents=[common_parser], add_help=False)
+
 help_parser = func_parser.add_parser('help', parents=[common_parser], add_help=False)
 
 args = parser.parse_args()
 set_context(args)
+read_config()
 
 if verbose: print("pixync: destributed image repository management application.")
-
-settings_file = os.path.expanduser('~') + os.path.sep + PIXYNC_DIR + SETTINGS_FILE
-
-if not os.path.exists(settings_file):
-    settings_file = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + SETTINGS_FILE
-
-if verbose: print("Settings File: ", settings_file)
-
-settings = read_settings(settings_file)
 
 if args.func == 'init': cmd_init()
 elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name)
@@ -562,5 +567,7 @@ elif args.func == 'remote':
     elif args.remote_func == 'set-url': cmd_remote_set_url(args.remote_repo_name, args.remote_repo_url)
     elif args.remote_func == 'rename': cmd_remote_rename(args.remote_repo_old_name, args.remote_repo_new_name)
     elif args.remote_func == 'remove': cmd_remote_remove(args.remote_repo_name)
+elif args.func == 'config':
+    if args.config_func == 'show': cmd_config_show()
 else:
     parser.print_help()
