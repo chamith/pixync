@@ -60,9 +60,26 @@ def get_path_with_trailing_slash(remote_path):
 def get_absolute_path_with_trailing_slash(local_repo_path):
     return get_path_with_trailing_slash(os.path.abspath(local_repo_path))
 
-def get_remote_repos():
-    if config_settings_local['repos']: return config_settings_local['repos']
-    return []
+def get_repo_name(path):
+    path_comp = os.path.split(path.rstrip(os.path.sep))
+    return path_comp[len(path_comp)-1]
+
+def get_remote_repos(include_global=False):
+    repos = []
+
+    if 'repos' in config_settings_local:
+        repos.extend(config_settings_local['repos'])
+
+    if 'remote-repo-roots' in config_settings_global and include_global:
+        for repo in config_settings_global['remote-repo-roots']:
+            if get_repo(repos, repo['name']):
+                get_repo(repos, repo['name'])['scope'] = 'overridden'
+            else:
+                repo['scope'] = 'global'
+                repo['url'] = get_path_with_trailing_slash(repo['url']) + get_repo_name(local_repo_path)
+                repos.append(repo)
+
+    return repos
 
 def get_repo(repos, remote_repo_name):
     for repo in repos:
@@ -103,9 +120,15 @@ def config_repos_set_url(repo_name, repo_url):
     return
 
 def config_repos_list(long=False):
-    remote_repos = get_remote_repos()
+    remote_repos = get_remote_repos(True)
+
     for repo in remote_repos:
-        if long: print(repo['name'],'\t', repo['url'])
+        if long: 
+            print(repo['name'], '\t', repo['url'])
+            if 'scope' in repo:
+                print('\t scope: ', repo['scope'])
+
+            if 'push-rating' in repo: print('\t push when rating >= ', repo['push-rating'])
         else: print(repo['name'])
 
 def config_repos_rename(repo_old_name, repo_new_name):
@@ -176,7 +199,7 @@ def set_last_activity_time(activity, repo):
     conn.close()
 
 def set_context(args):
-    global local_repo_path, verbose, quiet, google_api_client_secret
+    global local_repo_path, verbose, quiet, access_token
 
     verbose = args.verbose
     quiet = args.quiet
@@ -186,6 +209,11 @@ def set_context(args):
     else:
         local_repo_path = get_absolute_path_with_trailing_slash(os.getcwd())
 
+    if args.access_token:
+        access_token = args.access_token
+    else:
+        access_token = None
+
 def cmd_config_show():
     print('global config: ')
     print(config_settings_global)
@@ -194,8 +222,7 @@ def cmd_config_show():
     print(config_settings_local)
 
 def cmd_pull(remote_repo_name, delete):
-    config = read_config()
-    repos = get_remote_repos(config)
+    repos = get_remote_repos(True)
     repo = get_repo(repos, remote_repo_name)
 
     if repo == None:
@@ -238,9 +265,8 @@ def cmd_pull(remote_repo_name, delete):
 
     print ("Pull from '{}' to '{}' completed.".format(remote_repo_url, local_repo_path))
 
-def cmd_push(remote_repo_name, delete):
-    config = read_config()
-    repos = get_remote_repos(config)
+def cmd_push(remote_repo_name, delete, rating):
+    repos = get_remote_repos(True)
     repo = get_repo(repos, remote_repo_name)
 
     if repo == None:
@@ -249,11 +275,28 @@ def cmd_push(remote_repo_name, delete):
 
     remote_repo_url = get_path_with_trailing_slash(repo['url'])
 
+    if rating is None:
+        if 'push-rating' in repo:
+            rating = repo['push-rating']
+        else:   
+            rating = 0
+
     if verbose:
         print("---push---")
         print('remote_repo_url: ', remote_repo_url)
         print('local_repo_path: ', local_repo_path)
+        print('rating >=: ', rating)
     
+    if repo['url'].startswith('gdrive:'):
+        gdrive_adapter.local_repo_path = local_repo_path
+        gdrive_adapter.verbose = verbose
+        gdrive_adapter.quiet = quiet
+
+        gdrive_adapter.set_config(config_settings_global)
+        gdrive_adapter.set_client_credentials(access_token)
+        gdrive_adapter.upload_to_gdrive(rating)
+        exit(0)
+
     rsync_command = ['rsync','-urtW',
         '--exclude=.pixync/','--exclude=.trash/',
         '--exclude-from=' + local_repo_path + IGNORE_FILE, 
@@ -403,14 +446,14 @@ def cmd_cleanup(rating = 0):
                 os.rename(file_to_delete, trash_path + os.path.sep + rel_path)
     deleted_log.close()
 
-def cmd_upload(rating):
+def cmd_upload(rating, service):
 
     gdrive_adapter.local_repo_path = local_repo_path
     gdrive_adapter.verbose = verbose
     gdrive_adapter.quiet = quiet
 
     gdrive_adapter.set_config(config_settings_global)
-    gdrive_adapter.set_service_credentials(args.access_token) if args.service else gdrive_adapter.set_client_credentials(args.access_token)
+    gdrive_adapter.set_service_credentials(access_token) if service else gdrive_adapter.set_client_credentials(access_token)
     gdrive_adapter.upload_to_gdrive(rating)
 
 def cmd_remote_ls(long):
@@ -467,6 +510,7 @@ def cmd_remote_remove(remote_repo_name):
 # common
 common_parser = argparse.ArgumentParser()
 common_parser.add_argument('-p', '--local-repo-path', dest='local_repo_path', help='local repository path')
+common_parser.add_argument('-t', '--access-token', dest='access_token', help='access token')
 info_group = common_parser.add_mutually_exclusive_group()
 info_group.add_argument('-v', '--verbose', action='store_true')
 info_group.add_argument('-q', '--quiet', action='store_true')
@@ -495,6 +539,7 @@ pull_parser.add_argument('--delete', dest='delete', action='store_true')
 push_parser = func_parser.add_parser('push', parents=[common_parser], add_help=False)
 push_parser.add_argument('remote_repo_name', metavar='remote-repo-name', help='remote repository name')
 push_parser.add_argument('--delete', dest='delete', action='store_true')
+push_parser.add_argument('-r', '--rating', dest='rating', help='rating', type=int)
 
 # import
 import_parser = func_parser.add_parser('import', parents=[common_parser], add_help=False)
@@ -508,7 +553,6 @@ cleanup_parser.add_argument('-r', '--rating', dest='rating', help='rating', defa
 
 # upload
 upload_parser = func_parser.add_parser('upload', parents=[common_parser], add_help=False)
-upload_parser.add_argument('-t', '--access-token', dest='access_token', help='access token')
 upload_parser.add_argument('-r', '--rating', dest='rating', help='rating', default=5, type=int)
 upload_parser.add_argument('-s', '--service', dest='service', help='run as service', action='store_true')
 
@@ -557,10 +601,10 @@ if verbose: print("pixync: destributed image repository management application."
 if args.func == 'init': cmd_init()
 elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name)
 elif args.func == 'pull': cmd_pull(args.remote_repo_name, args.delete)
-elif args.func == 'push': cmd_push(args.remote_repo_name, args.delete)
+elif args.func == 'push': cmd_push(args.remote_repo_name, args.delete, args.rating)
 elif args.func == 'import': cmd_import(args.media_source_path, args.cam_name, args.delete_source_files)
 elif args.func == 'cleanup': cmd_cleanup(args.rating)
-elif args.func == 'upload': cmd_upload(args.rating)
+elif args.func == 'upload': cmd_upload(args.rating, args.service)
 elif args.func == 'remote':
     if args.remote_func == 'ls': cmd_remote_ls(args.remote_ls_l)
     elif args.remote_func == 'add': cmd_remote_add(args.remote_repo_name, args.remote_repo_url)

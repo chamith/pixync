@@ -30,3 +30,12 @@ gdrive-mime-type-mappings:
   text/plain:
   - arp
   - pp3
+remote-repo-roots:
+  - name: kalutara
+    url: pix@kalutara.local:photos
+    push-rating: 0
+    pull-rating: 0
+  - name: gdrive
+    url: gdrive:pixync
+    push-rating: 5
+    pull-rating: 0
