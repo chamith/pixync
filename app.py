@@ -10,6 +10,7 @@ import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
 import gdrive_adapter
+import metadata_util
 PIXYNC_DIR = ".pixync" + os.path.sep
 CONFIG_FILE_NAME = 'config.yaml'
 CONFIG_FILE = PIXYNC_DIR + CONFIG_FILE_NAME
@@ -17,8 +18,6 @@ DB_FILE = PIXYNC_DIR + 'activity.db'
 DELETE_LOG = PIXYNC_DIR + "delete.log"
 IMPORT_LOG = PIXYNC_DIR + "import.log"
 IGNORE_FILE = ".pixignore"
-XMP_NS_RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-XMP_NS_XAP = "http://ns.adobe.com/xap/1.0/"
 
 config_settings_global = {}
 config_settings_local = {}
@@ -122,11 +121,13 @@ def config_repos_set_url(repo_name, repo_url):
 def config_repos_list(long=False):
     remote_repos = get_remote_repos(True)
 
+    # print('{:<24}|{:<40}|{:^12}|{:^12}'.format('name', 'url', 'push-rating >=','pull-rating >='))
     for repo in remote_repos:
         if long: 
+            # print('{:<24}|{:<40}|{:^12}|{:^12}'.format(repo['name'], repo['url'],repo['push-rating'], repo['pull-rating'] ))
             print(repo['name'], '\t', repo['url'])
             if 'scope' in repo:
-                print('\t scope: ', repo['scope'])
+                print('\t scope:', repo['scope'])
 
             if 'push-rating' in repo: print('\t push when rating >= ', repo['push-rating'])
         else: print(repo['name'])
@@ -431,27 +432,19 @@ def cmd_cleanup(rating = 0):
     if verbose: print("Reading the ratings")
     for file in glob.iglob(local_repo_path + '/**/*.xmp', recursive=True):
         if verbose: print(file,'\t', end=' ')
-        desc_with_rating = ET.parse(file).getroot().find("./{"+XMP_NS_RDF+"}RDF/{"+XMP_NS_RDF+"}Description/[@{"+XMP_NS_XAP+"}Rating]")
-        if desc_with_rating is None:
-            if verbose: print(" [{}]".format(' '))
-            continue
-        r = int(desc_with_rating.get("{"+XMP_NS_XAP+"}Rating"))
+        r = metadata_util.get_file_rating(file)
         if verbose: print(" [{}]".format(r))
         if r < rating:
-            filename, file_extension = os.path.splitext(file)
-            for file_to_delete in glob.iglob(filename + '*'):
-                rel_path = os.path.relpath(file_to_delete, local_repo_path)
-                deleted_log.write(os.path.relpath(file_to_delete, local_repo_path))
+            for file_to_delete in metadata_util.get_related_files(file, local_repo_path):
+                deleted_log.write(file_to_delete)
                 deleted_log.write('\n')
-                os.rename(file_to_delete, trash_path + os.path.sep + rel_path)
+                os.rename(file_to_delete, trash_path + os.path.sep + file_to_delete)
     deleted_log.close()
 
 def cmd_upload(rating, service):
-
     gdrive_adapter.local_repo_path = local_repo_path
     gdrive_adapter.verbose = verbose
     gdrive_adapter.quiet = quiet
-
     gdrive_adapter.set_config(config_settings_global)
     gdrive_adapter.set_service_credentials(access_token) if service else gdrive_adapter.set_client_credentials(access_token)
     gdrive_adapter.upload_to_gdrive(rating)

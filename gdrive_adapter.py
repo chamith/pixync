@@ -13,7 +13,7 @@ from google.oauth2 import service_account
 from googleapiclient.http import MediaFileUpload
 import sys, glob, yaml
 import xml.etree.ElementTree as ET
-
+import metadata_util
 
 # If modifying these scopes, delete the file token.json.
 GOOGLE_API_SCOPES = ['https://www.googleapis.com/auth/drive']
@@ -67,15 +67,9 @@ def get_files(local_repo_path, rating):
     XMP_NS_XAP = "http://ns.adobe.com/xap/1.0/"
     files = []
     for file in glob.iglob(local_repo_path + '/**/*.xmp', recursive=True):
-        desc_with_rating = ET.parse(file).getroot().find("./{"+XMP_NS_RDF+"}RDF/{"+XMP_NS_RDF+"}Description/[@{"+XMP_NS_XAP+"}Rating]")
-        if desc_with_rating is None:
-            continue
-        r = int(desc_with_rating.get("{"+XMP_NS_XAP+"}Rating"))
+        r = metadata_util.get_file_rating(file)
         if r >= rating:
-            filename, file_extension = os.path.splitext(file)
-            for file_to_upload in glob.iglob(filename + '*'):
-                rel_path = os.path.relpath(file_to_upload, local_repo_path)
-                files.append(rel_path)
+            files.extend(metadata_util.get_related_files(file, local_repo_path))
     return files
 
 def set_client_credentials(client_cred_file):
