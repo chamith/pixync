@@ -66,8 +66,8 @@ def get_files(local_repo_path, rating):
     XMP_NS_RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
     XMP_NS_XAP = "http://ns.adobe.com/xap/1.0/"
     files = []
-    for file in glob.iglob(local_repo_path + '/**/*.xmp', recursive=True):
-        r = metadata_util.get_file_rating(file)
+    for file in metadata_util.get_metadata_files(local_repo_path):
+        r = metadata_util.get_rating(file)
         if r >= rating:
             files.extend(metadata_util.get_related_files(file, local_repo_path))
     return files

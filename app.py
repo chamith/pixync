@@ -430,12 +430,12 @@ def cmd_cleanup(rating = 0):
 
     deleted_log = open(local_repo_path + DELETE_LOG,'a+')
     if verbose: print("Reading the ratings")
-    for file in glob.iglob(local_repo_path + '/**/*.xmp', recursive=True):
-        if verbose: print(file,'\t', end=' ')
-        r = metadata_util.get_file_rating(file)
+    for metadata_file in metadata_util.get_metadata_files(local_repo_path):
+        if verbose: print(metadata_file,'\t', end=' ')
+        r = metadata_util.get_rating(metadata_file)
         if verbose: print(" [{}]".format(r))
         if r < rating:
-            for file_to_delete in metadata_util.get_related_files(file, local_repo_path):
+            for file_to_delete in metadata_util.get_related_files(metadata_file, local_repo_path):
                 deleted_log.write(file_to_delete)
                 deleted_log.write('\n')
                 os.rename(file_to_delete, trash_path + os.path.sep + file_to_delete)

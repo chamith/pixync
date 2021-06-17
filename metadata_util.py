@@ -4,6 +4,12 @@ import os, glob
 XMP_NS_RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 XMP_NS_XAP = "http://ns.adobe.com/xap/1.0/"
 
+def build_glob_pattern(mask_base, *extensions):
+    mask_ext = ['[{}]'.format(''.join(set(c))) for c in zip(*extensions)]
+    if not mask_ext or len(set(len(e) for e in extensions)) > 1:
+        mask_ext.append('*')
+    return mask_base + ''.join(mask_ext)
+
 def get_rating(metadata_file):
     ext = os.path.splitext(metadata_file)[1][1:]
     if ext in ('xmp', 'XMP'):
@@ -38,6 +44,8 @@ def is_deleted_pp3(pp3_file):
             return line.rstrip('\n').split('=')[1] == 'true'
 
     return False
+def get_metadata_files(local_repo_path):
+    return glob.iglob(local_repo_path + '/**/*.[xpXP][mpMP][p3P]', recursive=True)
 
 def get_related_files(metadata_file, local_repo_path):
     files = []
