@@ -39,3 +39,5 @@ remote-repo-roots:
     url: gdrive:pixync
     push-rating: 5
     pull-rating: 0
+  - name: samsung_t5_ssd
+    url: /media/chamith/T5_500GB/Pictures

@@ -11,16 +11,19 @@ import sqlite3
 import xml.etree.ElementTree as ET
 import gdrive_adapter
 import metadata_util
-PIXYNC_DIR = ".pixync" + os.path.sep
+
+APP_NAME = "pixync"
+APP_DESC = "distributed digital asset management system for photographers"
+APP_CONFIG_DIR = "." + APP_NAME + os.path.sep
 CONFIG_FILE_NAME = 'config.yaml'
-CONFIG_FILE = PIXYNC_DIR + CONFIG_FILE_NAME
-DB_FILE = PIXYNC_DIR + 'activity.db'
-DELETE_LOG = PIXYNC_DIR + "delete.log"
-IMPORT_LOG = PIXYNC_DIR + "import.log"
+CONFIG_FILE = APP_CONFIG_DIR + CONFIG_FILE_NAME
+DB_FILE = APP_CONFIG_DIR + 'activity.db'
+DELETE_LOG = APP_CONFIG_DIR + "delete.log"
+IMPORT_LOG = APP_CONFIG_DIR + "import.log"
 IGNORE_FILE = ".pixignore"
 
-config_settings_global = {}
-config_settings_local = {}
+config_settings_global = None
+config_settings_local = None
 
 def read_config():
     global config_settings_local, config_settings_global
@@ -29,6 +32,8 @@ def read_config():
     if not os.path.exists(config_file_global):
         config_file_global = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + CONFIG_FILE_NAME
 
+    if verbose: print('global config file: ', config_file_global)
+
     with open(config_file_global) as file:
         config_settings_global = yaml.load(file, Loader=yaml.FullLoader)
 
@@ -36,6 +41,8 @@ def read_config():
         config_file_local = local_repo_path + CONFIG_FILE
 
         if os.path.exists(config_file_local):
+            if verbose: print('repo config file: ', config_file_local)
+
             with open(local_repo_path + CONFIG_FILE) as file:
                 config_settings_local = yaml.load(file, Loader=yaml.FullLoader)
 
@@ -204,23 +211,28 @@ def set_context(args):
 
     verbose = args.verbose
     quiet = args.quiet
+    access_token = args.access_token
 
     if args.local_repo_path:
         local_repo_path = get_absolute_path_with_trailing_slash(args.local_repo_path)
     else:
         local_repo_path = get_absolute_path_with_trailing_slash(os.getcwd())
 
-    if args.access_token:
-        access_token = args.access_token
+def cmd_config_show(section):
+
+    if section in ('ext-mappings','gdrive-mime-type-mappings','remote-repo-roots'):
+        print(yaml.dump(config_settings_global[section]))
+    elif section in ('repos'):
+        if config_settings_local and section in config_settings_global:
+            print(yaml.dump(config_settings_local[section]))
+        else:
+            print('repository config or the section is not available')
     else:
-        access_token = None
+        print('global config: ')
+        print(yaml.dump(config_settings_global))
 
-def cmd_config_show():
-    print('global config: ')
-    print(config_settings_global)
-
-    print('local config: ')
-    print(config_settings_local)
+        print('local config: ')
+        print(yaml.dump(config_settings_local))
 
 def cmd_pull(remote_repo_name, delete):
     repos = get_remote_repos(True)
@@ -248,7 +260,7 @@ def cmd_pull(remote_repo_name, delete):
 
     rsync_command = ['rsync','-urtW', 
         '--exclude=.pixync/','--exclude=.trash/', 
-        '--exclude-from='+local_repo_path+IGNORE_FILE, 
+        '--exclude-from=' + local_repo_path + IGNORE_FILE, 
         remote_repo_url, local_repo_path]
 
     if not quiet:
@@ -259,7 +271,7 @@ def cmd_pull(remote_repo_name, delete):
         rsync_command.insert(2,'--delete')
 
     if os.path.exists(local_repo_path + DELETE_LOG):
-        rsync_command.insert(2,'--exclude-from='+local_repo_path+DELETE_LOG)
+        rsync_command.insert(2,'--exclude-from=' + local_repo_path + DELETE_LOG)
 
     subprocess.call(rsync_command)
     set_last_activity_time('pull', remote_repo_name)
@@ -286,13 +298,14 @@ def cmd_push(remote_repo_name, delete, rating):
         print("---push---")
         print('remote_repo_url: ', remote_repo_url)
         print('local_repo_path: ', local_repo_path)
-        print('rating >=: ', rating)
+        print('rating >= ', rating)
     
-    if repo['url'].startswith('gdrive:'):
+    GDRIVE_REPO_PREFIX = 'gdrive:'
+    if repo['url'].startswith(GDRIVE_REPO_PREFIX):
         gdrive_adapter.local_repo_path = local_repo_path
         gdrive_adapter.verbose = verbose
         gdrive_adapter.quiet = quiet
-
+        gdrive_adapter.gdrive_repo_path = repo['url'][len(GDRIVE_REPO_PREFIX):].rstrip('/').split('/', 1)
         gdrive_adapter.set_config(config_settings_global)
         gdrive_adapter.set_client_credentials(access_token)
         gdrive_adapter.upload_to_gdrive(rating)
@@ -348,7 +361,7 @@ def cmd_clone(remote_repo_url, remote_repo_name):
         print("Repository '{}' already exists.".format(local_repo_path))
         exit(1)
 
-    os.makedirs(local_repo_path + PIXYNC_DIR)
+    os.makedirs(local_repo_path + APP_CONFIG_DIR)
     config_settings_local = {'repos': [{'name':remote_repo_name,'url':remote_repo_url}]}
 
     write_config_local()
@@ -364,7 +377,7 @@ def cmd_init():
         print("---init---")
         print('local_repo_path: ', local_repo_path) 
 
-    os.makedirs(local_repo_path + PIXYNC_DIR)
+    os.makedirs(local_repo_path + APP_CONFIG_DIR)
 
     config_settings_local = {'repos': []}
     os.makedirs(local_repo_path, exist_ok=True)
@@ -509,8 +522,8 @@ info_group.add_argument('-v', '--verbose', action='store_true')
 info_group.add_argument('-q', '--quiet', action='store_true')
 
 parser = argparse.ArgumentParser(
-    description='Synchronizes the photos amoung multiple repositories', 
-    prog="pixync" , add_help=False, parents=[common_parser])
+    description=APP_DESC, 
+    prog=APP_NAME , add_help=False, parents=[common_parser])
 
 # function
 func_parser = parser.add_subparsers(title="command", dest='func')
@@ -582,6 +595,7 @@ config_func_parser = config_parser.add_subparsers(title='config function', dest=
 
 # config show
 config_show_parser = config_func_parser.add_parser('show', parents=[common_parser], add_help=False)
+config_show_parser.add_argument('config_section', default='all')
 
 help_parser = func_parser.add_parser('help', parents=[common_parser], add_help=False)
 
@@ -589,7 +603,8 @@ args = parser.parse_args()
 set_context(args)
 read_config()
 
-if verbose: print("pixync: destributed image repository management application.")
+if verbose: 
+    print("{}: {}".format(APP_NAME, APP_DESC))
 
 if args.func == 'init': cmd_init()
 elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name)
@@ -604,7 +619,8 @@ elif args.func == 'remote':
     elif args.remote_func == 'set-url': cmd_remote_set_url(args.remote_repo_name, args.remote_repo_url)
     elif args.remote_func == 'rename': cmd_remote_rename(args.remote_repo_old_name, args.remote_repo_new_name)
     elif args.remote_func == 'remove': cmd_remote_remove(args.remote_repo_name)
+    else: cmd_remote_ls(True)
 elif args.func == 'config':
-    if args.config_func == 'show': cmd_config_show()
+    if args.config_func == 'show': cmd_config_show(args.config_section)
 else:
     parser.print_help()

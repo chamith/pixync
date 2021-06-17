@@ -24,6 +24,7 @@ verbose = False
 quiet = False
 path_mappings = {}
 local_repo_path = None
+gdrive_repo_path = None
 
 def get_dir(name, parent):
     candidates = gdrive_service.files().list(q="name='{}' and mimeType = 'application/vnd.google-apps.folder' and parents in '{}'".format(name, parent.get('id')), 
@@ -55,6 +56,7 @@ def get_dir_for_path(path, parent):
         dir = get_dir(dir_comp, dir)
 
     path_mappings[path] = dir
+    print(path_mappings)
     return dir
 
 def get_mime_type_by_ext(ext_mappings, ext):
@@ -107,31 +109,28 @@ def set_config(config):
 def upload_to_gdrive(rating):
     global gdrive_service
 
-    # settings = read_settings(settings_file)
-
     ext_mappings = {}
     for cat_key, cat_value in settings['gdrive-mime-type-mappings'].items():
         for ext in cat_value:
             ext_mappings[ext] = cat_key
 
-    repo_name = os.path.split(local_repo_path.rstrip(os.path.sep))[1]
+    root_dir_id, repo_path = gdrive_repo_path
 
     files_to_upload = get_files(local_repo_path, rating)
 
     if verbose:
-        print("repo to upload: ", repo_name) 
+        print("repo to upload: ", repo_path) 
         print("rating >= ", rating)
 
     gdrive_service = build('drive', 'v3', credentials=creds)
 
-    pixync_root_candidates = gdrive_service.files().list(q="name='pixync' and mimeType = 'application/vnd.google-apps.folder'", 
-        spaces='drive', fields="nextPageToken, files(id, name)").execute()
-    pixync_root = pixync_root_candidates.get('files', [])[0]
+    pixync_root = gdrive_service.files().get(fileId=root_dir_id).execute()
+    print(pixync_root)
 
     for file in files_to_upload:
 
         dir_path, file_name = os.path.split(file)
-        dir = get_dir_for_path(repo_name + '/' + dir_path, pixync_root)
+        dir = get_dir_for_path(repo_path + '/' + dir_path, pixync_root)
         if verbose: print("GDrive Directory for the File: ", dir)
 
         existing_file_candidates = gdrive_service.files().list(q="name='{}' and parents in '{}'".format(file_name, dir.get('id')), 
@@ -150,6 +149,7 @@ def upload_to_gdrive(rating):
             new_file = gdrive_service.files().create(body=file_metadata,
                                                 media_body=media,
                                                 fields='id').execute()
+
             print ("File '{}' uploaded to GDrive ".format(file), end='')
             if verbose: print('[Id: {}]'.format(new_file.get('id')))
             else: print('')
