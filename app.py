@@ -21,6 +21,7 @@ DB_FILE = APP_CONFIG_DIR + 'activity.db'
 DELETE_LOG = APP_CONFIG_DIR + "delete.log"
 IMPORT_LOG = APP_CONFIG_DIR + "import.log"
 IGNORE_FILE = ".pixignore"
+GDRIVE_REPO_PREFIX = 'gdrive:'
 
 config_settings_global = None
 config_settings_local = None
@@ -234,7 +235,7 @@ def cmd_config_show(section):
         print('local config: ')
         print(yaml.dump(config_settings_local))
 
-def cmd_pull(remote_repo_name, delete):
+def cmd_pull(remote_repo_name, delete, dry_run=False):
     repos = get_remote_repos(True)
     repo = get_repo(repos, remote_repo_name)
 
@@ -270,6 +271,9 @@ def cmd_pull(remote_repo_name, delete):
     if delete:
         rsync_command.insert(2,'--delete')
 
+    if dry_run:
+        rsync_command.insert(2,'--dry-run')
+
     if os.path.exists(local_repo_path + DELETE_LOG):
         rsync_command.insert(2,'--exclude-from=' + local_repo_path + DELETE_LOG)
 
@@ -278,7 +282,7 @@ def cmd_pull(remote_repo_name, delete):
 
     print ("Pull from '{}' to '{}' completed.".format(remote_repo_url, local_repo_path))
 
-def cmd_push(remote_repo_name, delete, rating):
+def cmd_push(remote_repo_name, delete, dry_run, rating):
     repos = get_remote_repos(True)
     repo = get_repo(repos, remote_repo_name)
 
@@ -300,7 +304,6 @@ def cmd_push(remote_repo_name, delete, rating):
         print('local_repo_path: ', local_repo_path)
         print('rating >= ', rating)
     
-    GDRIVE_REPO_PREFIX = 'gdrive:'
     if repo['url'].startswith(GDRIVE_REPO_PREFIX):
         gdrive_adapter.local_repo_path = local_repo_path
         gdrive_adapter.verbose = verbose
@@ -331,6 +334,9 @@ def cmd_push(remote_repo_name, delete, rating):
         rsync_commit_command.insert(2,'-v')
         rsync_commit_command.insert(2,'--progress')
 
+    if dry_run:
+        rsync_commit_command.append('--dry-run')
+
     subprocess.call(rsync_commit_command)
 
     if delete and os.path.exists(local_repo_path + DELETE_LOG):
@@ -340,6 +346,10 @@ def cmd_push(remote_repo_name, delete, rating):
         if not quiet:
             rsync_delete_command.insert(2,'-v')
             rsync_delete_command.insert(2,'--progress')
+        
+        if dry_run:
+            rsync_delete_command.append('--dry-run')
+
         subprocess.call(rsync_delete_command)
 
     set_last_activity_time('push', remote_repo_name)
@@ -540,11 +550,13 @@ clone_parser.add_argument('-r', '--remote-repo-name', dest='remote_repo_name', h
 pull_parser = func_parser.add_parser('pull', parents=[common_parser], add_help=False)
 pull_parser.add_argument('remote_repo_name', metavar='remote-repo-name', help='remote repository name')
 pull_parser.add_argument('--delete', dest='delete', action='store_true')
+pull_parser.add_argument('--dry-run', dest='dry_run', action='store_true')
 
 # push
 push_parser = func_parser.add_parser('push', parents=[common_parser], add_help=False)
 push_parser.add_argument('remote_repo_name', metavar='remote-repo-name', help='remote repository name')
 push_parser.add_argument('--delete', dest='delete', action='store_true')
+push_parser.add_argument('--dry-run', dest='dry_run', action='store_true')
 push_parser.add_argument('-r', '--rating', dest='rating', help='rating', type=int)
 
 # import
@@ -608,8 +620,8 @@ if verbose:
 
 if args.func == 'init': cmd_init()
 elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name)
-elif args.func == 'pull': cmd_pull(args.remote_repo_name, args.delete)
-elif args.func == 'push': cmd_push(args.remote_repo_name, args.delete, args.rating)
+elif args.func == 'pull': cmd_pull(args.remote_repo_name, args.delete, args.dry_run)
+elif args.func == 'push': cmd_push(args.remote_repo_name, args.delete, args.dry_run, args.rating)
 elif args.func == 'import': cmd_import(args.media_source_path, args.cam_name, args.delete_source_files)
 elif args.func == 'cleanup': cmd_cleanup(args.rating)
 elif args.func == 'upload': cmd_upload(args.rating, args.service)

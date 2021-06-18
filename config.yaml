@@ -31,13 +31,3 @@ gdrive-mime-type-mappings:
   - arp
   - pp3
 remote-repo-roots:
-  - name: kalutara
-    url: pix@kalutara.local:photos
-    push-rating: 0
-    pull-rating: 0
-  - name: gdrive
-    url: gdrive:pixync
-    push-rating: 5
-    pull-rating: 0
-  - name: samsung_t5_ssd
-    url: /media/chamith/T5_500GB/Pictures
