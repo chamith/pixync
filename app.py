@@ -216,6 +216,8 @@ def set_context(args):
 
     if args.local_repo_path:
         local_repo_path = get_absolute_path_with_trailing_slash(args.local_repo_path)
+    elif args.func == 'clone':
+        local_repo_path = get_absolute_path_with_trailing_slash(get_default_local_repo_path(args.remote_repo_url))
     else:
         local_repo_path = get_absolute_path_with_trailing_slash(os.getcwd())
 
@@ -357,10 +359,7 @@ def cmd_push(remote_repo_name, delete, dry_run, rating):
     print ("Push from '{}' to '{}' complete.".format(local_repo_path, remote_repo_url))
     
 def cmd_clone(remote_repo_url, remote_repo_name):
-    global local_repo_path, config_settings_local
-
-    if local_repo_path == get_path_with_trailing_slash(os.getcwd()):
-        local_repo_path = get_absolute_path_with_trailing_slash(get_default_local_repo_path(remote_repo_url))
+    global config_settings_local
 
     if verbose:
         print("---clone---")
@@ -464,13 +463,24 @@ def cmd_cleanup(rating = 0):
                 os.rename(file_to_delete, trash_path + os.path.sep + file_to_delete)
     deleted_log.close()
 
-def cmd_upload(rating, service):
+def cmd_upload(remote_repo_name, rating, service):
+
+    repos = get_remote_repos(True)
+    repo = get_repo(repos, remote_repo_name)
+
     gdrive_adapter.local_repo_path = local_repo_path
     gdrive_adapter.verbose = verbose
     gdrive_adapter.quiet = quiet
+    gdrive_adapter.gdrive_repo_path = repo['url'][len(GDRIVE_REPO_PREFIX):].rstrip('/').split('/', 1)
     gdrive_adapter.set_config(config_settings_global)
     gdrive_adapter.set_service_credentials(access_token) if service else gdrive_adapter.set_client_credentials(access_token)
     gdrive_adapter.upload_to_gdrive(rating)
+
+def cmd_move(source, target):
+    source = source.rstrip('/')
+    target = get_path_with_trailing_slash(target)
+
+    subprocess.call(['rsync', '-rtuvW', '--progress', '--remove-source-files', source, target])
 
 def cmd_remote_ls(long):
     if verbose:
@@ -546,6 +556,11 @@ clone_parser = func_parser.add_parser('clone', parents=[common_parser], add_help
 clone_parser.add_argument('remote_repo_url', metavar='remote-repo-url', help='remote repository url')
 clone_parser.add_argument('-r', '--remote-repo-name', dest='remote_repo_name', help='remote repository name', default='origin')
 
+# clone
+move_parser = func_parser.add_parser('move', parents=[common_parser], add_help=False)
+move_parser.add_argument('source', metavar='source', help='source repository url')
+move_parser.add_argument('target', metavar='target', help='target')
+
 # pull
 pull_parser = func_parser.add_parser('pull', parents=[common_parser], add_help=False)
 pull_parser.add_argument('remote_repo_name', metavar='remote-repo-name', help='remote repository name')
@@ -571,6 +586,7 @@ cleanup_parser.add_argument('-r', '--rating', dest='rating', help='rating', defa
 
 # upload
 upload_parser = func_parser.add_parser('upload', parents=[common_parser], add_help=False)
+upload_parser.add_argument('remote_repo_name', metavar='remote-repo-name', help='remote repository name')
 upload_parser.add_argument('-r', '--rating', dest='rating', help='rating', default=5, type=int)
 upload_parser.add_argument('-s', '--service', dest='service', help='run as service', action='store_true')
 
@@ -624,7 +640,8 @@ elif args.func == 'pull': cmd_pull(args.remote_repo_name, args.delete, args.dry_
 elif args.func == 'push': cmd_push(args.remote_repo_name, args.delete, args.dry_run, args.rating)
 elif args.func == 'import': cmd_import(args.media_source_path, args.cam_name, args.delete_source_files)
 elif args.func == 'cleanup': cmd_cleanup(args.rating)
-elif args.func == 'upload': cmd_upload(args.rating, args.service)
+elif args.func == 'upload': cmd_upload(args.remote_repo_name, args.rating, args.service)
+elif args.func == 'move': cmd_move(args.source, args.target)
 elif args.func == 'remote':
     if args.remote_func == 'ls': cmd_remote_ls(args.remote_ls_l)
     elif args.remote_func == 'add': cmd_remote_add(args.remote_repo_name, args.remote_repo_url)
