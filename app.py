@@ -14,6 +14,7 @@ import metadata_util
 
 APP_NAME = "pixync"
 APP_DESC = "distributed digital asset management system for photographers"
+APP_VERSION = "v1.1"
 APP_CONFIG_DIR = "." + APP_NAME + os.path.sep
 CONFIG_FILE_NAME = 'config.yaml'
 CONFIG_FILE = APP_CONFIG_DIR + CONFIG_FILE_NAME
@@ -22,9 +23,28 @@ DELETE_LOG = APP_CONFIG_DIR + "delete.log"
 IMPORT_LOG = APP_CONFIG_DIR + "import.log"
 IGNORE_FILE = ".pixignore"
 GDRIVE_REPO_PREFIX = 'gdrive:'
-
+BANNER_WIDTH = 75
 config_settings_global = None
 config_settings_local = None
+
+def print_banner():
+    print("{:_<75}".format(''))
+    print("""
+__________._______  ________.___._______  _________  
+\______   \   \   \/  /\__  |   |\      \ \_   ___ \ 
+ |     ___/   |\     /  /   |   |/   |   \/    \  \/ 
+ |    |   |   |/     \  \____   /    |    \     \____
+ |____|   |___/___/\  \ / ______\____|__  /\______  /
+                    \_/ \/              \/        \/   {} """.format(APP_VERSION))
+    print('')
+    print("{} - {}".format(APP_NAME, APP_DESC))
+    print("{:_<75}".format(''))
+
+def print_function_header(title):
+    if verbose: print("{:*^75}".format(title.upper()))
+
+def print_function_footer():
+    if verbose: print("{:*<75}".format(''))
 
 def read_config():
     global config_settings_local, config_settings_global
@@ -33,6 +53,7 @@ def read_config():
     if not os.path.exists(config_file_global):
         config_file_global = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + CONFIG_FILE_NAME
 
+    print_function_header("configuration files")
     if verbose: print('global config file: ', config_file_global)
 
     with open(config_file_global) as file:
@@ -46,6 +67,8 @@ def read_config():
 
             with open(local_repo_path + CONFIG_FILE) as file:
                 config_settings_local = yaml.load(file, Loader=yaml.FullLoader)
+
+    print_function_footer()
 
 def write_config_local():
     config_file = local_repo_path + CONFIG_FILE
@@ -247,8 +270,8 @@ def cmd_pull(remote_repo_name, delete, dry_run=False):
 
     remote_repo_url = get_path_with_trailing_slash(repo['url'])
 
+    print_function_header('pull')
     if verbose:
-        print("--- pull ---")
         print('remote_repo_url:\t ', remote_repo_url)
         print('local_repo_path:\t ', local_repo_path)
 
@@ -282,6 +305,7 @@ def cmd_pull(remote_repo_name, delete, dry_run=False):
     subprocess.call(rsync_command)
     set_last_activity_time('pull', remote_repo_name)
 
+    print_function_footer()
     print ("Pull from '{}' to '{}' completed.".format(remote_repo_url, local_repo_path))
 
 def cmd_push(remote_repo_name, delete, dry_run, rating):
@@ -310,7 +334,7 @@ def cmd_push(remote_repo_name, delete, dry_run, rating):
         gdrive_adapter.local_repo_path = local_repo_path
         gdrive_adapter.verbose = verbose
         gdrive_adapter.quiet = quiet
-        gdrive_adapter.gdrive_repo_path = repo['url'][len(GDRIVE_REPO_PREFIX):].rstrip('/').split('/', 1)
+        gdrive_adapter.gdrive_repo_url = repo['url'][len(GDRIVE_REPO_PREFIX):].rstrip('/').split('/', 1)
         gdrive_adapter.set_config(config_settings_global)
         gdrive_adapter.set_client_credentials(access_token)
         gdrive_adapter.upload_to_gdrive(rating)
@@ -471,7 +495,7 @@ def cmd_upload(remote_repo_name, rating, service):
     gdrive_adapter.local_repo_path = local_repo_path
     gdrive_adapter.verbose = verbose
     gdrive_adapter.quiet = quiet
-    gdrive_adapter.gdrive_repo_path = repo['url'][len(GDRIVE_REPO_PREFIX):].rstrip('/').split('/', 1)
+    gdrive_adapter.gdrive_repo_url = repo['url'][len(GDRIVE_REPO_PREFIX):].rstrip('/').split('/', 1)
     gdrive_adapter.set_config(config_settings_global)
     gdrive_adapter.set_service_credentials(access_token) if service else gdrive_adapter.set_client_credentials(access_token)
     gdrive_adapter.upload_to_gdrive(rating)
@@ -629,10 +653,10 @@ help_parser = func_parser.add_parser('help', parents=[common_parser], add_help=F
 
 args = parser.parse_args()
 set_context(args)
-read_config()
 
-if verbose: 
-    print("{}: {}".format(APP_NAME, APP_DESC))
+print_banner()
+    
+read_config()
 
 if args.func == 'init': cmd_init()
 elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name)

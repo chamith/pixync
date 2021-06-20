@@ -25,7 +25,8 @@ verbose = False
 quiet = False
 path_mappings = {}
 local_repo_path = None
-gdrive_repo_path = None
+gdrive_repo_url = None
+
 
 def get_dir(name, parent):
     candidates = gdrive_service.files().list(q="name='{}' and mimeType = 'application/vnd.google-apps.folder' and parents in '{}'".format(name, parent.get('id')), 
@@ -33,6 +34,7 @@ def get_dir(name, parent):
     items = candidates.get('files', [])
 
     if len is None or len(items) == 0: 
+
         file_metadata = {
             'name': name,
             'mimeType': 'application/vnd.google-apps.folder',
@@ -41,7 +43,10 @@ def get_dir(name, parent):
         return gdrive_service.files().create(body=file_metadata,
                                     fields='id, name').execute()
     else:
-        return items[0]
+        dir = items[0]
+
+
+        return dir
 
 def get_dir_for_path(path, parent):
     global path_mappings
@@ -59,12 +64,29 @@ def get_dir_for_path(path, parent):
     path_mappings[path] = dir
     return dir
 
+def get_available_file(file):
+    dir_path, file_name = os.path.split(file)
+
+    if verbose:
+        print('> checking the availability')
+
+    if dir_path in path_mappings:
+        dir = path_mappings[dir_path]
+        if 'files' in dir:
+            for f in dir['files']:
+                if f['name'] == file_name:
+                    return f
+            return None
+        return None
+    else:
+        return None
+
 def get_mime_type_by_ext(ext_mappings, ext):
     for k, v in ext_mappings.items():
         if k.lower() == ext.lower()[1:]: return v
     return 'application/octet-stream'
     
-def get_files(local_repo_path, rating):
+def get_local_files(local_repo_path, rating):
     files = []
     for file in metadata_util.get_metadata_files(local_repo_path):
         r = metadata_util.get_rating(file)
@@ -106,37 +128,48 @@ def set_config(config):
     global settings
     settings = config
 
-def upload_to_gdrive(rating):
-    global gdrive_service
+def build_gdrive_directory_tree():
+    dir_tree = glob.glob(local_repo_path +'/**/', recursive=True)
 
+    if verbose: print('{:=^75}'.format('building directory tree'.upper()))
+    for dir_path in dir_tree:
+        gdrive_dir_path = gdrive_repo_path + '/' + os.path.relpath(dir_path, local_repo_path)
+        if verbose: print('>' , gdrive_dir_path)
+        dir = get_dir_for_path( gdrive_dir_path , gdrive_pixync_root)
+
+        if not 'files' in dir:
+            files_response = gdrive_service.files().list(q="mimeType != 'application/vnd.google-apps.folder' and parents in '{}'".format(dir.get('id')), 
+            spaces='drive', fields="nextPageToken, files(id, name)").execute()
+            files_in_dir = files_response.get('files',[])
+
+            if verbose: 
+                for file in files_in_dir: print(">> {}".format(file))
+
+            dir['files'] = files_in_dir
+    if verbose: print('{:=^75}'.format(''))
+
+def upload_files(rating):
     ext_mappings = {}
     for cat_key, cat_value in settings['gdrive-mime-type-mappings'].items():
         for ext in cat_value:
             ext_mappings[ext] = cat_key
 
-    root_dir_id, repo_path = gdrive_repo_path
+    if verbose: print('{:=^75}'.format('uploading files'.upper()))
 
-    files_to_upload = get_files(local_repo_path, rating)
-
-    if verbose:
-        print("repo to upload: ", repo_path) 
-        print("rating >= ", rating)
-
-    gdrive_service = build('drive', 'v3', credentials=creds)
-
-    pixync_root = gdrive_service.files().get(fileId=root_dir_id).execute()
+    files_to_upload = get_local_files(local_repo_path, rating)
 
     for file in files_to_upload:
         if verbose: print('{:-<75}'.format(file))
         dir_path, file_name = os.path.split(file)
-        dir = get_dir_for_path(repo_path + '/' + dir_path, pixync_root)
-        if verbose: print("> directory:", dir)
+        dir = get_dir_for_path(gdrive_repo_path + '/' + dir_path, gdrive_pixync_root)
+        available_file = get_available_file(gdrive_repo_path + '/' + file)
 
-        existing_file_candidates = gdrive_service.files().list(q="name='{}' and parents in '{}'".format(file_name, dir.get('id')), 
-            spaces='drive', fields="nextPageToken, files(id, name)").execute()
-        items = existing_file_candidates.get('files', [])
-
-        if len(items) == 0:
+        if available_file:
+            if verbose: 
+                print('> already on the drive. [Id: {}]'.format(available_file.get('id')))
+                print('{:-<75}'.format(''))
+            else: print("File '{}' already on GDrive ".format(file))
+        else:
             if verbose: print("> uploading ....")
             file_extension = os.path.splitext(file_name)[1]
             file_metadata = {
@@ -146,17 +179,35 @@ def upload_to_gdrive(rating):
 
             media = MediaFileUpload(local_repo_path + file, 
                 mimetype=get_mime_type_by_ext(ext_mappings, file_extension))
-            new_file = gdrive_service.files().create(body=file_metadata,
-                media_body=media,
-                fields='id').execute()
 
-            if verbose: 
-                print('> upload complete. [Id: {}]'.format(new_file.get('id')))
-                print('{:-<75}'.format(''))
-            else: print ("File '{}' uploaded to GDrive ".format(file))
+            try:
+                new_file = gdrive_service.files().create(body=file_metadata,
+                    media_body=media,
+                    fields='id, name').execute()
+                dir['files'].append(new_file)
+                if verbose: 
+                    print('> upload complete. [Id: {}]'.format(new_file.get('id')))
+                    print('{:-<75}'.format(''))
+                else: print ("File '{}' uploaded to GDrive ".format(file))
+            except:
+                if verbose: print("> error occurred while uploading.")
+                else: print("Error occurred while uploading the file '{}'".format(file))
+    if verbose: print('{:=^75}'.format(''))
 
-        else:
-            if verbose: 
-                print('> already on the drive. [Id: {}]'.format(items[0].get('id')))
-                print('{:-<75}'.format(''))
-            else: print("File '{}' already on GDrive ".format(file))
+def init_gdrive_service():
+    global gdrive_service, gdrive_pixync_root, gdrive_repo_path
+
+    root_dir_id, gdrive_repo_path = gdrive_repo_url
+    gdrive_service = build('drive', 'v3', credentials=creds)
+
+    try:
+        gdrive_pixync_root = gdrive_service.files().get(fileId=root_dir_id).execute()
+    except:
+        print('Error occurred while accessing the pixync root directory on GDrive.')
+        exit(1)
+
+def upload_to_gdrive(rating):
+    init_gdrive_service()
+    build_gdrive_directory_tree()
+    upload_files(rating)
+
