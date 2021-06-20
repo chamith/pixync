@@ -74,7 +74,7 @@ def get_repo_name(path):
 def get_remote_repos(include_global=False):
     repos = []
 
-    if 'repos' in config_settings_local:
+    if config_settings_local and 'repos' in config_settings_local:
         repos.extend(config_settings_local['repos'])
 
     if 'remote-repo-roots' in config_settings_global and include_global:
