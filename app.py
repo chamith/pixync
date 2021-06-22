@@ -260,7 +260,7 @@ def cmd_config_show(section):
         print('local config: ')
         print(yaml.dump(config_settings_local))
 
-def cmd_pull(remote_repo_name, delete, dry_run=False):
+def cmd_pull(remote_repo_name, delete, dry_run, rating):
     repos = get_remote_repos(True)
     repo = get_repo(repos, remote_repo_name)
 
@@ -283,6 +283,17 @@ def cmd_pull(remote_repo_name, delete, dry_run=False):
             print('New images have been imported since the last push to the remote repository \'{}\''.format(remote_repo_name))
             print('Please perform a push to \'{}\' to avoid deletion of newly imported images.'.format(remote_repo_name))
             exit(1)
+
+    if repo['url'].startswith(GDRIVE_REPO_PREFIX):
+        gdrive_adapter.local_repo_path = local_repo_path
+        gdrive_adapter.verbose = verbose
+        gdrive_adapter.quiet = quiet
+        gdrive_adapter.gdrive_repo_url = repo['url'][len(GDRIVE_REPO_PREFIX):].rstrip('/').split('/', 1)
+        gdrive_adapter.set_config(config_settings_global)
+        gdrive_adapter.set_client_credentials(access_token)
+        gdrive_adapter.pull(rating)
+        print_function_footer()
+        exit(0)
 
     rsync_command = ['rsync','-urtW', 
         '--exclude=.pixync/','--exclude=.trash/', 
@@ -590,6 +601,7 @@ pull_parser = func_parser.add_parser('pull', parents=[common_parser], add_help=F
 pull_parser.add_argument('remote_repo_name', metavar='remote-repo-name', help='remote repository name')
 pull_parser.add_argument('--delete', dest='delete', action='store_true')
 pull_parser.add_argument('--dry-run', dest='dry_run', action='store_true')
+pull_parser.add_argument('-r', '--rating', dest='rating', help='rating', type=int)
 
 # push
 push_parser = func_parser.add_parser('push', parents=[common_parser], add_help=False)
@@ -660,7 +672,7 @@ read_config()
 
 if args.func == 'init': cmd_init()
 elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name)
-elif args.func == 'pull': cmd_pull(args.remote_repo_name, args.delete, args.dry_run)
+elif args.func == 'pull': cmd_pull(args.remote_repo_name, args.delete, args.dry_run, args.rating)
 elif args.func == 'push': cmd_push(args.remote_repo_name, args.delete, args.dry_run, args.rating)
 elif args.func == 'import': cmd_import(args.media_source_path, args.cam_name, args.delete_source_files)
 elif args.func == 'cleanup': cmd_cleanup(args.rating)

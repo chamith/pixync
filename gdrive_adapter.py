@@ -2,6 +2,7 @@
 # 
 # # https://developers.google.com/drive/api/v3/quickstart/python
 from __future__ import print_function
+import io
 import os.path
 from posixpath import relpath
 from google.oauth2 import credentials
@@ -10,7 +11,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google.oauth2 import service_account
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 import sys, glob, yaml
 import xml.etree.ElementTree as ET
 import metadata_util
@@ -23,10 +24,18 @@ SCRIPT_DIR_PATH = os.path.dirname(os.path.realpath(__file__)) + os.path.sep
 TOKEN_FILE = ".pixync" + os.path.sep + "gcp-security-token.json"
 verbose = False
 quiet = False
-path_mappings = {}
+path_mappings_repo_root = {}
+path_mappings_repo_sub_dir = {}
+
 local_repo_path = None
 gdrive_repo_url = None
+gdrive_tree = []
 
+def print_step_header(title):
+    if verbose: print("{:=^75}".format(title.upper()))
+
+def print_step_footer():
+    if verbose: print("{:=^75}".format(''))
 
 def get_dir(name, parent):
     candidates = gdrive_service.files().list(q="name='{}' and mimeType = 'application/vnd.google-apps.folder' and parents in '{}'".format(name, parent.get('id')), 
@@ -48,9 +57,7 @@ def get_dir(name, parent):
 
         return dir
 
-def get_dir_for_path(path, parent):
-    global path_mappings
-
+def get_dir_for_path(path, parent, path_mappings):
     for key in path_mappings:
         if key == path:
             return path_mappings[key]
@@ -70,8 +77,8 @@ def get_available_file(file):
     if verbose:
         print('> checking the availability')
 
-    if dir_path in path_mappings:
-        dir = path_mappings[dir_path]
+    if dir_path in path_mappings_repo_sub_dir:
+        dir = path_mappings_repo_sub_dir[dir_path]
         if 'files' in dir:
             for f in dir['files']:
                 if f['name'] == file_name:
@@ -122,20 +129,56 @@ def set_service_credentials(service_cred_file):
         service_cred_file = SCRIPT_DIR_PATH + GOOGLE_API_SERVICE_CRED_FILE
 
     creds = service_account.Credentials.from_service_account_file(
-    service_cred_file, scopes=GOOGLE_API_SCOPES)
+        service_cred_file, scopes=GOOGLE_API_SCOPES)
 
 def set_config(config):
     global settings
     settings = config
 
-def build_gdrive_directory_tree():
-    dir_tree = glob.glob(local_repo_path +'/**/', recursive=True)
+def get_children_gdrive(parent, parent_path):
+    print("> {}".format(parent_path if len(parent_path)>0 else '<root>'))
+    children_response = gdrive_service.files().list(
+        q="parents in '{}'".format(parent.get('id')), 
+        spaces='drive', fields="nextPageToken, files(id, name, mimeType)").execute()
+    children = children_response.get('files',[])
+    for child in children:
+        child_path = parent_path + os.path.sep + child['name'] if len(parent_path) > 0 else child['name']
+        path_mappings_repo_sub_dir[child_path] = child
+        if child['mimeType'] == 'application/vnd.google-apps.folder':
+            get_children_gdrive(child, child_path)
 
-    if verbose: print('{:=^75}'.format('building directory tree'.upper()))
+def build_directory_tree_gdrive():
+    print_step_header("building the directory tree")
+    repo_dir = get_dir_for_path(gdrive_repo_path, gdrive_pixync_root, path_mappings_repo_root)
+    get_children_gdrive(repo_dir, '')
+    print_step_footer()
+
+def download_files(rating):
+    print_step_header("downloading files")
+    for item in path_mappings_repo_sub_dir:
+        local_file_path = local_repo_path + item
+        local_file_rel_path = os.path.relpath(local_file_path, local_repo_path)
+        if os.path.exists(local_file_path):
+            print ('> {:<60}{:>13}'.format(local_file_rel_path, 'available'))
+        else:
+            request = gdrive_service.files().get_media(fileId=path_mappings_repo_sub_dir[item]['id'])
+            fh = io.FileIO(item, 'wb')
+            downloader = MediaIoBaseDownload(fh, request, chunksize=1024*1024)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+                print ('> {:<60}{:>13}'.format(local_file_rel_path, '[{}%]'.format(int(status.progress() * 100))), end='\r')
+            print ('> {:<60}{:>13}'.format(local_file_rel_path,'downloaded'))
+            
+    print_step_footer()
+
+def build_directory_tree_local():
+    print_step_header('building directory tree')
+    dir_tree = glob.glob(local_repo_path +'/**/', recursive=True)
     for dir_path in dir_tree:
         gdrive_dir_path = gdrive_repo_path + '/' + os.path.relpath(dir_path, local_repo_path)
         if verbose: print('>' , gdrive_dir_path)
-        dir = get_dir_for_path( gdrive_dir_path , gdrive_pixync_root)
+        dir = get_dir_for_path( gdrive_dir_path , gdrive_pixync_root, path_mappings_repo_sub_dir)
 
         if not 'files' in dir:
             files_response = gdrive_service.files().list(q="mimeType != 'application/vnd.google-apps.folder' and parents in '{}'".format(dir.get('id')), 
@@ -146,7 +189,7 @@ def build_gdrive_directory_tree():
                 for file in files_in_dir: print(">> {}".format(file))
 
             dir['files'] = files_in_dir
-    if verbose: print('{:=^75}'.format(''))
+    print_step_footer()
 
 def upload_files(rating):
     ext_mappings = {}
@@ -161,7 +204,7 @@ def upload_files(rating):
     for file in files_to_upload:
         if verbose: print('{:-<75}'.format(file))
         dir_path, file_name = os.path.split(file)
-        dir = get_dir_for_path(gdrive_repo_path + '/' + dir_path, gdrive_pixync_root)
+        dir = get_dir_for_path(gdrive_repo_path + '/' + dir_path, gdrive_pixync_root, path_mappings_repo_sub_dir)
         available_file = get_available_file(gdrive_repo_path + '/' + file)
 
         if available_file:
@@ -208,6 +251,10 @@ def init_gdrive_service():
 
 def upload_to_gdrive(rating):
     init_gdrive_service()
-    build_gdrive_directory_tree()
+    build_directory_tree_local()
     upload_files(rating)
 
+def pull(rating):
+    init_gdrive_service()
+    build_directory_tree_gdrive()
+    download_files(rating)
