@@ -1,5 +1,8 @@
 import xml.etree.ElementTree as ET
 import os, glob
+from libxmp.utils import file_to_dict
+from libxmp import consts
+
 
 XMP_NS_RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 XMP_NS_XAP = "http://ns.adobe.com/xap/1.0/"
@@ -37,11 +40,18 @@ def get_rating_pp3(pp3_file):
 
     return 0
 
+def get_rating_embed(file):
+    xmp = file_to_dict(file)
+    if xmp:
+        for tpl in xmp["http://ns.adobe.com/xap/1.0/"]:
+            if tpl[0] == "xmp:Rating":
+                return tpl[1]
+    return 0
+
 def is_deleted_pp3(pp3_file):
     file = open(pp3_file,'r')
     for line in file:
-        if line.startswith("InTrash"):
-            return line.rstrip('\n').split('=')[1] == 'true'
+        if line.startswith("InTrash"): return line.rstrip('\n').split('=')[1] == 'true'
 
     return False
 def get_metadata_files(local_repo_path):
@@ -50,6 +60,7 @@ def get_metadata_files(local_repo_path):
 def get_related_files(metadata_file, local_repo_path):
     files = []
     filename = os.path.splitext(metadata_file)[0]
+    print ("match_criteria:", filename)
     for file_to_upload in glob.iglob(filename + '*'):
         rel_path = os.path.relpath(file_to_upload, local_repo_path)
         files.append(rel_path)

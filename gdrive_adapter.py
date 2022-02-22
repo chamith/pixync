@@ -90,13 +90,30 @@ def get_mime_type_by_ext(ext_mappings, ext):
     for k, v in ext_mappings.items():
         if k.lower() == ext.lower()[1:]: return v
     return 'application/octet-stream'
-    
+
+def get_local_files_with_ignored_ratings():
+    files = []
+
+    ignore_ratings = 'ignore-ratings'
+    if not ignore_ratings in settings:
+        return files
+
+    for pattern in settings[ignore_ratings]:
+        filter = local_repo_path + "/**/" + pattern
+        for file in glob.iglob(filter, recursive=True):
+            files.append(os.path.relpath(file, local_repo_path))
+
+    return files
+
 def get_local_files(local_repo_path, rating):
     files = []
     for file in metadata_util.get_metadata_files(local_repo_path):
         r = metadata_util.get_rating(file)
         if r >= rating:
             files.extend(metadata_util.get_related_files(file, local_repo_path))
+
+    files.extend(get_local_files_with_ignored_ratings())
+
     return files
 
 def set_client_credentials(client_cred_file):
@@ -199,6 +216,7 @@ def upload_files(rating):
         for ext in cat_value:
             ext_mappings[ext] = cat_key
 
+
     print_step_header("uploading files")
     files_to_upload = get_local_files(local_repo_path, rating)
 
@@ -250,5 +268,4 @@ def upload_to_gdrive(rating):
 def pull(rating):
     init_gdrive_service()
     build_directory_tree_gdrive()
-    for path in path_mappings_repo_sub_dir: print (path)
     download_files(rating)

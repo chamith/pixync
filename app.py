@@ -11,16 +11,11 @@ import sqlite3
 import xml.etree.ElementTree as ET
 import gdrive_adapter
 import metadata_util
+from app_info import AppInfo
+from app_config import AppConfig
 
-APP_NAME = "pixync"
-APP_DESC = "distributed digital asset management system for photographers"
-APP_VERSION = "v1.1"
-APP_CONFIG_DIR = "." + APP_NAME + os.path.sep
-CONFIG_FILE_NAME = 'config.yaml'
-CONFIG_FILE = APP_CONFIG_DIR + CONFIG_FILE_NAME
-DB_FILE = APP_CONFIG_DIR + 'activity.db'
-DELETE_LOG = APP_CONFIG_DIR + "delete.log"
-IMPORT_LOG = APP_CONFIG_DIR + "import.log"
+appInfo = AppInfo()
+appConfig = AppConfig(appInfo)
 IGNORE_FILE = ".pixignore"
 GDRIVE_REPO_PREFIX = 'gdrive:'
 BANNER_WIDTH = 75
@@ -28,6 +23,9 @@ config_settings_global = None
 config_settings_local = None
 
 def print_banner():
+    if quiet:
+        return
+        
     print("{:_<75}".format(''))
     print("""
 __________._______  ________.___._______  _________  
@@ -35,9 +33,9 @@ __________._______  ________.___._______  _________
  |     ___/   |\     /  /   |   |/   |   \/    \  \/ 
  |    |   |   |/     \  \____   /    |    \     \____
  |____|   |___/___/\  \ / ______\____|__  /\______  /
-                    \_/ \/              \/        \/   {} """.format(APP_VERSION))
+                    \_/ \/              \/        \/   {} """.format(appInfo.version))
     print('')
-    print("{} - {}".format(APP_NAME, APP_DESC))
+    print("{} - {}".format(appInfo.name, appInfo.version))
     print("{:_<75}".format(''))
 
 def print_function_header(title):
@@ -49,9 +47,11 @@ def print_function_footer():
 def read_config():
     global config_settings_local, config_settings_global
 
-    config_file_global = os.path.expanduser('~') + os.path.sep + CONFIG_FILE
+    print(appConfig.global_config_settings)
+
+    config_file_global = os.path.expanduser('~') + os.path.sep + appConfig.file_path
     if not os.path.exists(config_file_global):
-        config_file_global = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + CONFIG_FILE_NAME
+        config_file_global = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + appConfig.file_name
 
     print_function_header("configuration files")
     if verbose: print('global config file: ', config_file_global)
@@ -60,18 +60,18 @@ def read_config():
         config_settings_global = yaml.load(file, Loader=yaml.FullLoader)
 
     if local_repo_path:
-        config_file_local = local_repo_path + CONFIG_FILE
+        config_file_local = local_repo_path + appConfig.file_path
 
         if os.path.exists(config_file_local):
             if verbose: print('repo config file: ', config_file_local)
 
-            with open(local_repo_path + CONFIG_FILE) as file:
+            with open(local_repo_path + appConfig.file_path) as file:
                 config_settings_local = yaml.load(file, Loader=yaml.FullLoader)
 
     print_function_footer()
 
 def write_config_local():
-    config_file = local_repo_path + CONFIG_FILE
+    config_file = local_repo_path + appConfig.file_path
     if verbose: print("Writing the config file '{}'".format(config_file))
     with open(config_file, 'w') as file:
         yaml.dump(config_settings_local, file, sort_keys=True)
@@ -152,10 +152,12 @@ def config_repos_set_url(repo_name, repo_url):
 def config_repos_list(long=False):
     remote_repos = get_remote_repos(True)
 
-    # print('{:<24}|{:<40}|{:^12}|{:^12}'.format('name', 'url', 'push-rating >=','pull-rating >='))
+    # print('{:-<92}'.format(''))
+    # print('|{:<21}|{:<40}|{:^8}|{:^8}|{:^7}|'.format('NAME', 'URL', ' PUSH >= ',' PULL >= ', ' SCOPE '))
+    # print('{:-<92}'.format(''))
     for repo in remote_repos:
         if long: 
-            # print('{:<24}|{:<40}|{:^12}|{:^12}'.format(repo['name'], repo['url'],repo['push-rating'], repo['pull-rating'] ))
+            # print('|{:<21}|{:<40}|{:^8}|{:^8}|{:^7}|'.format(repo['name'], repo['url']))
             print(repo['name'], '\t', repo['url'])
             if 'scope' in repo:
                 print('\t scope:', repo['scope'])
@@ -188,7 +190,7 @@ def get_default_local_repo_path(remote_repo_url):
     return os.getcwd() + os.path.sep  + dir_name
 
 def setup_db():
-    db = local_repo_path + DB_FILE
+    db = local_repo_path + appConfig.db_file_path
 
     if verbose: print("Deleting the existing DB.")
 
@@ -202,7 +204,7 @@ def setup_db():
     if verbose: print("Creating DB and the Table Structures Completed.")
 
 def get_last_activity_time(activity, repo):
-    conn = sqlite3.connect(local_repo_path + DB_FILE)
+    conn = sqlite3.connect(local_repo_path + appConfig.db_file_path)
     cur = conn.cursor()
     params = (activity, repo)
 
@@ -217,7 +219,7 @@ def get_last_activity_time(activity, repo):
     return None
 
 def set_last_activity_time(activity, repo):
-    conn = sqlite3.connect(local_repo_path + DB_FILE) 
+    conn = sqlite3.connect(local_repo_path + appConfig.db_file_path) 
     params = (activity, repo)
 
     last_activity_time = get_last_activity_time(activity,repo)
@@ -259,6 +261,10 @@ def cmd_config_show(section):
 
         print('local config: ')
         print(yaml.dump(config_settings_local))
+
+    for file in glob.iglob(local_repo_path + "**/*.jpg", recursive=True):
+        print(file, ":", metadata_util.get_rating_embed(file)
+)
 
 def cmd_pull(remote_repo_name, delete, dry_run, rating):
     repos = get_remote_repos(True)
@@ -310,8 +316,8 @@ def cmd_pull(remote_repo_name, delete, dry_run, rating):
     if dry_run:
         rsync_command.insert(2,'--dry-run')
 
-    if os.path.exists(local_repo_path + DELETE_LOG):
-        rsync_command.insert(2,'--exclude-from=' + local_repo_path + DELETE_LOG)
+    if os.path.exists(local_repo_path + appConfig.delete_log_path):
+        rsync_command.insert(2,'--exclude-from=' + local_repo_path + appConfig.delete_log_path)
 
     subprocess.call(rsync_command)
     set_last_activity_time('pull', remote_repo_name)
@@ -319,7 +325,7 @@ def cmd_pull(remote_repo_name, delete, dry_run, rating):
     print_function_footer()
     print ("Pull from '{}' to '{}' completed.".format(remote_repo_url, local_repo_path))
 
-def cmd_push(remote_repo_name, delete, dry_run, rating):
+def cmd_push(remote_repo_name, delete, forced_delete, dry_run, rating):
     repos = get_remote_repos(True)
     repo = get_repo(repos, remote_repo_name)
 
@@ -360,6 +366,13 @@ def cmd_push(remote_repo_name, delete, dry_run, rating):
         rsync_command.insert(2,'-v')
         rsync_command.insert(2,'--progress')
 
+    if forced_delete:
+        rsync_command.insert(2,'--delete')
+
+
+    if dry_run:
+        rsync_command.append('--dry-run')
+        
     subprocess.call(rsync_command)
 
     rsync_commit_command = ['rsync','-urtW',
@@ -376,9 +389,9 @@ def cmd_push(remote_repo_name, delete, dry_run, rating):
 
     subprocess.call(rsync_commit_command)
 
-    if delete and os.path.exists(local_repo_path + DELETE_LOG):
+    if delete and os.path.exists(local_repo_path + appConfig.delete_log_path):
         rsync_delete_command = ['rsync', '-urtW', '--delete', 
-            '--include-from=' + local_repo_path + DELETE_LOG, 
+            '--include-from=' + local_repo_path + appConfig.delete_log_path, 
             '--exclude=*.*', local_repo_path, remote_repo_url]
         if not quiet:
             rsync_delete_command.insert(2,'-v')
@@ -401,18 +414,18 @@ def cmd_clone(remote_repo_url, remote_repo_name):
         print('remote_repo_url: ', remote_repo_url)
         print('local_repo_path: ', local_repo_path) 
 
-    if os.path.exists(local_repo_path + CONFIG_FILE):
+    if os.path.exists(local_repo_path + appConfig.file_path):
         print("Repository '{}' already exists.".format(local_repo_path))
         exit(1)
 
-    os.makedirs(local_repo_path + APP_CONFIG_DIR)
+    os.makedirs(local_repo_path + appConfig.config_file_dir)
     config_settings_local = {'repos': [{'name':remote_repo_name,'url':remote_repo_url}]}
 
     write_config_local()
     write_ignore()
     setup_db()
 
-    cmd_pull(remote_repo_name, False)
+    cmd_pull(remote_repo_name, False, False, 0)
     print('Remote repository \'{}\' cloned into \'{}\' successfully.'.format(remote_repo_url, local_repo_path))
 
 def cmd_init():
@@ -421,7 +434,7 @@ def cmd_init():
         print("---init---")
         print('local_repo_path: ', local_repo_path) 
 
-    os.makedirs(local_repo_path + APP_CONFIG_DIR)
+    os.makedirs(local_repo_path + appConfig.config_file_dir)
 
     config_settings_local = {'repos': []}
     os.makedirs(local_repo_path, exist_ok=True)
@@ -460,7 +473,7 @@ def cmd_import(media_source_path, cam_name, delete_source_files=False):
     if verbose: print('Caching the files in the local repo path completed.')
 
     if verbose: print('Moving & Renaming files in the local repo.')
-    import_log = open(local_repo_path + IMPORT_LOG, "a")
+    import_log = open(local_repo_path + appConfig.import_log_path, "a")
     for file in glob.iglob(local_temp_dir + '/**/*.*', recursive=True):
         creation_date = get_creation_date(file)
         file_extension = os.path.splitext(file)[1]
@@ -485,7 +498,7 @@ def cmd_cleanup(rating = 0):
     os.makedirs(trash_path, exist_ok=True)
     subprocess.call(['rsync', '--exclude=.trash', '--exclude=.pixync', '-a', '-f+ */', '-f- *' , local_repo_path, trash_path])
 
-    deleted_log = open(local_repo_path + DELETE_LOG,'a+')
+    deleted_log = open(local_repo_path + appConfig.delete_log_path,'a+')
     if verbose: print("Reading the ratings")
     for metadata_file in metadata_util.get_metadata_files(local_repo_path):
         if verbose: print(metadata_file,'\t', end=' ')
@@ -577,8 +590,8 @@ info_group.add_argument('-v', '--verbose', action='store_true')
 info_group.add_argument('-q', '--quiet', action='store_true')
 
 parser = argparse.ArgumentParser(
-    description=APP_DESC, 
-    prog=APP_NAME , add_help=False, parents=[common_parser])
+    description=appInfo.description, 
+    prog=appInfo.name , add_help=False, parents=[common_parser])
 
 # function
 func_parser = parser.add_subparsers(title="command", dest='func')
@@ -607,6 +620,7 @@ pull_parser.add_argument('-r', '--rating', dest='rating', help='rating', type=in
 push_parser = func_parser.add_parser('push', parents=[common_parser], add_help=False)
 push_parser.add_argument('remote_repo_name', metavar='remote-repo-name', help='remote repository name')
 push_parser.add_argument('--delete', dest='delete', action='store_true')
+push_parser.add_argument('--forced-delete', dest='forced_delete', action='store_true')
 push_parser.add_argument('--dry-run', dest='dry_run', action='store_true')
 push_parser.add_argument('-r', '--rating', dest='rating', help='rating', type=int)
 
@@ -673,7 +687,7 @@ read_config()
 if args.func == 'init': cmd_init()
 elif args.func == 'clone': cmd_clone(args.remote_repo_url, args.remote_repo_name)
 elif args.func == 'pull': cmd_pull(args.remote_repo_name, args.delete, args.dry_run, args.rating)
-elif args.func == 'push': cmd_push(args.remote_repo_name, args.delete, args.dry_run, args.rating)
+elif args.func == 'push': cmd_push(args.remote_repo_name, args.delete, args.forced_delete, args.dry_run, args.rating)
 elif args.func == 'import': cmd_import(args.media_source_path, args.cam_name, args.delete_source_files)
 elif args.func == 'cleanup': cmd_cleanup(args.rating)
 elif args.func == 'upload': cmd_upload(args.remote_repo_name, args.rating, args.service)
