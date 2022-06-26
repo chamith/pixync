@@ -47,7 +47,7 @@ def print_function_footer():
 def read_config():
     global config_settings_local, config_settings_global
 
-    print(appConfig.global_config_settings)
+    # print(appConfig.global_config_settings)
 
     config_file_global = os.path.expanduser('~') + os.path.sep + appConfig.file_path
     if not os.path.exists(config_file_global):
